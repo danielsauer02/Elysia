@@ -5,17 +5,47 @@
     "scheme": "elysia",
     "version": "0.1.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "plugins": [
       "expo-router",
-      "expo-notifications"
+      "expo-notifications",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Elysia to access your camera to scan food barcodes."
+        }
+      ],
+      [
+        "react-native-health-connect",
+        {
+          "backupRulesPermission": "Allow Elysia to backup your health data"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
     },
     "ios": {
-      "supportsTablet": false
+      "supportsTablet": false,
+      "bundleIdentifier": "com.elysia.longevity",
+      "infoPlist": {
+        "NSHealthShareUsageDescription": "Elysia reads your health data to personalise longevity insights and track your habits.",
+        "NSHealthUpdateUsageDescription": "Elysia writes workout and nutrition data to Apple Health."
+      },
+      "entitlements": {
+        "com.apple.developer.healthkit": true,
+        "com.apple.developer.healthkit.access": []
+      }
     },
-    "android": {}
+    "android": {
+      "package": "com.elysia.longevity",
+      "permissions": [
+        "android.permission.health.READ_STEPS",
+        "android.permission.health.READ_HEART_RATE",
+        "android.permission.health.READ_SLEEP",
+        "android.permission.health.READ_ACTIVE_CALORIES_BURNED",
+        "android.permission.health.READ_DISTANCE"
+      ]
+    }
   }
 }

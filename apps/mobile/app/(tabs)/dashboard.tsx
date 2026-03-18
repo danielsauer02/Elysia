@@ -1,10 +1,11 @@
-import React from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   ScrollView,
   Text,
   View,
   StyleSheet,
   TouchableOpacity,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -16,7 +17,14 @@ import { SectionHeader } from "@/components/ui/SectionHeader";
 import { AgingCurveChart } from "@/components/ui/AgingCurveChart";
 import { useHabits } from "@/context/HabitsContext";
 import { useAppContext } from "@/context/AppContext";
-import { mockUserSummary, mockFoodLog, mockMacroTarget } from "@/mocks/data";
+import { useNutrition } from "@/context/NutritionContext";
+import {
+  readTodayHealthData,
+  requestHealthPermissions,
+  isHealthAvailable,
+  type HealthData,
+} from "@/lib/healthkit";
+import { mockUserSummary } from "@/mocks/data";
 import { getGreeting } from "@/utils/date";
 
 // ─── Mock aging data ─────────────────────────────────────────────────────────
@@ -57,6 +65,38 @@ function StatPill({
   );
 }
 
+// ─── Health data hook ─────────────────────────────────────────────────────────
+
+function useHealthData() {
+  const [data, setData] = useState<HealthData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [permissionsGranted, setPermissionsGranted] = useState(false);
+  const available = isHealthAvailable();
+
+  const requestAndRead = useCallback(async () => {
+    if (!available) return;
+    setLoading(true);
+    try {
+      const granted = await requestHealthPermissions();
+      setPermissionsGranted(granted);
+      if (granted) {
+        const healthData = await readTodayHealthData();
+        setData(healthData);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [available]);
+
+  useEffect(() => {
+    if (available) {
+      void requestAndRead();
+    }
+  }, [available, requestAndRead]);
+
+  return { data, loading, permissionsGranted, available, requestAndRead };
+}
+
 // ─── Health module row ───────────────────────────────────────────────────────
 interface ModuleData {
   title: string;
@@ -65,19 +105,72 @@ interface ModuleData {
   value?: string;
   unit?: string;
   sub?: string;
-  progress?: number;
   color: string;
 }
 
-const HEALTH_MODULES: ModuleData[] = [
-  { title: "HRV", icon: "pulse-outline", status: "connect", color: "#818CF8", sub: "Heart rate variability" },
-  { title: "Sleep Score", icon: "moon-outline", status: "connect", color: "#A78BFA", sub: "Stages, REM, deep" },
-  { title: "Resting HR", icon: "heart-outline", status: "connect", color: "#F87171", sub: "Baseline cardiovascular" },
-  { title: "Steps", icon: "footsteps-outline", status: "connect", color: "#34D399", sub: "Daily activity" },
-  { title: "Calories (wearable)", icon: "flame-outline", status: "connect", color: "#FB923C", sub: "Active + passive burn" },
-  { title: "Blood Glucose", icon: "analytics-outline", status: "coming_soon", color: "#FBBF24", sub: "CGM integration · Phase 2" },
-  { title: "VO₂ Max", icon: "fitness-outline", status: "coming_soon", color: "#38BDF8", sub: "Cardiorespiratory · Phase 2" },
-];
+function buildHealthModules(data: HealthData | null): ModuleData[] {
+  const isConnected = (v: number | null | undefined): v is number => v != null;
+  return [
+    {
+      title: "HRV",
+      icon: "pulse-outline" as const,
+      color: "#818CF8",
+      status: (isConnected(data?.hrvMs) ? "connected" : "connect") as ModuleData["status"],
+      value: isConnected(data?.hrvMs) ? String(Math.round(data!.hrvMs!)) : undefined,
+      unit: "ms",
+      sub: "Heart rate variability",
+    },
+    {
+      title: "Sleep",
+      icon: "moon-outline" as const,
+      color: "#A78BFA",
+      status: (isConnected(data?.sleepHours) ? "connected" : "connect") as ModuleData["status"],
+      value: isConnected(data?.sleepHours) ? String(data!.sleepHours) : undefined,
+      unit: "h",
+      sub: "Last night's sleep",
+    },
+    {
+      title: "Resting HR",
+      icon: "heart-outline" as const,
+      color: "#F87171",
+      status: (isConnected(data?.restingHeartRateBpm) ? "connected" : "connect") as ModuleData["status"],
+      value: isConnected(data?.restingHeartRateBpm) ? String(data!.restingHeartRateBpm) : undefined,
+      unit: "bpm",
+      sub: "Baseline cardiovascular",
+    },
+    {
+      title: "Steps",
+      icon: "footsteps-outline" as const,
+      color: "#34D399",
+      status: (isConnected(data?.steps) ? "connected" : "connect") as ModuleData["status"],
+      value: isConnected(data?.steps) ? data!.steps!.toLocaleString() : undefined,
+      sub: "Daily activity",
+    },
+    {
+      title: "Active kcal",
+      icon: "flame-outline" as const,
+      color: "#FB923C",
+      status: (isConnected(data?.activeCalories) ? "connected" : "connect") as ModuleData["status"],
+      value: isConnected(data?.activeCalories) ? String(data!.activeCalories) : undefined,
+      unit: "kcal",
+      sub: "Active calories burned",
+    },
+    {
+      title: "Blood Glucose",
+      icon: "analytics-outline",
+      color: "#FBBF24",
+      status: "coming_soon",
+      sub: "CGM integration · Phase 4",
+    },
+    {
+      title: "VO₂ Max",
+      icon: "fitness-outline",
+      color: "#38BDF8",
+      status: "coming_soon",
+      sub: "Cardiorespiratory · Phase 4",
+    },
+  ];
+}
 
 function ModuleTile({ mod }: { mod: ModuleData }) {
   return (
@@ -143,19 +236,18 @@ function WeeklyChart() {
 export default function DashboardScreen() {
   const router = useRouter();
   const { onboardingData } = useAppContext();
-  const { habits, getTodayProgress } = useHabits();
+  const { getTodayProgress } = useHabits();
+  const { macroTargets, getDayTotals, isGoalSet } = useNutrition();
+  const { data: healthData, loading: healthLoading, available: healthAvailable, requestAndRead } = useHealthData();
   const { completed, total } = getTodayProgress();
   const firstName = onboardingData?.name?.split(" ")[0] ?? "there";
   const greeting = getGreeting();
 
   const chronoAge = calcChronoAge(onboardingData?.dateOfBirth);
-  // Biological age mock: 1.8 years younger due to good habits
   const bioAge = Math.max(10, chronoAge - 1.8);
 
-  const foodTotals = mockFoodLog.reduce(
-    (acc, e) => ({ calories: acc.calories + e.calories, protein: acc.protein + e.proteinG }),
-    { calories: 0, protein: 0 }
-  );
+  const foodTotals = getDayTotals();
+  const healthModules = buildHealthModules(healthData);
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -222,25 +314,39 @@ export default function DashboardScreen() {
               </View>
               <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
             </View>
-            <View style={styles.nutritionRow}>
-              <View style={styles.nutritionStat}>
-                <Text style={styles.nutritionValue}>{Math.round(foodTotals.calories)}</Text>
-                <Text style={styles.nutritionUnit}>kcal</Text>
-              </View>
-              <View style={styles.nutritionDivider} />
-              <View style={styles.nutritionStat}>
-                <Text style={styles.nutritionValue}>{Math.round(foodTotals.protein)}g</Text>
-                <Text style={styles.nutritionUnit}>protein</Text>
-              </View>
-              <View style={styles.nutritionDivider} />
-              <View style={styles.nutritionStat}>
-                <Text style={styles.nutritionValue}>
-                  {Math.round((foodTotals.calories / mockMacroTarget.calories) * 100)}%
-                </Text>
-                <Text style={styles.nutritionUnit}>of target</Text>
-              </View>
-            </View>
-            <ProgressBar value={foodTotals.calories / mockMacroTarget.calories} color="#4ADE80" height={4} />
+            {isGoalSet && macroTargets ? (
+              <>
+                <View style={styles.nutritionRow}>
+                  <View style={styles.nutritionStat}>
+                    <Text style={styles.nutritionValue}>{Math.round(foodTotals.calories)}</Text>
+                    <Text style={styles.nutritionUnit}>kcal</Text>
+                  </View>
+                  <View style={styles.nutritionDivider} />
+                  <View style={styles.nutritionStat}>
+                    <Text style={styles.nutritionValue}>{Math.round(foodTotals.proteinG)}g</Text>
+                    <Text style={styles.nutritionUnit}>protein</Text>
+                  </View>
+                  <View style={styles.nutritionDivider} />
+                  <View style={styles.nutritionStat}>
+                    <Text style={styles.nutritionValue}>
+                      {macroTargets.calories > 0
+                        ? Math.round((foodTotals.calories / macroTargets.calories) * 100)
+                        : 0}%
+                    </Text>
+                    <Text style={styles.nutritionUnit}>of target</Text>
+                  </View>
+                </View>
+                <ProgressBar
+                  value={macroTargets.calories > 0 ? foodTotals.calories / macroTargets.calories : 0}
+                  color="#4ADE80"
+                  height={4}
+                />
+              </>
+            ) : (
+              <Text style={styles.nutritionSetupHint}>
+                Tap to set up your nutrition goal →
+              </Text>
+            )}
           </Card>
         </TouchableOpacity>
 
@@ -248,15 +354,41 @@ export default function DashboardScreen() {
         <View>
           <SectionHeader
             title="Health data"
-            subtitle="Connect a wearable to activate"
+            subtitle={
+              healthData
+                ? `Updated ${new Date(healthData.lastUpdated ?? "").toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+                : healthAvailable
+                ? "Reading device health…"
+                : "Connect a wearable or device"
+            }
             action={{ label: "Manage", onPress: () => router.push("/(tabs)/settings") }}
             paddingHorizontal={0}
           />
+
+          {/* Connect device prompt (EAS build required) */}
+          {!healthAvailable && (
+            <View style={styles.connectPrompt}>
+              <Ionicons name="watch-outline" size={20} color={colors.textTertiary} />
+              <Text style={styles.connectPromptText}>
+                Health data requires an EAS development build.{"\n"}
+                Apple Health and Google Health Connect will activate automatically.
+              </Text>
+            </View>
+          )}
+
+          {/* Loading spinner */}
+          {healthAvailable && healthLoading && (
+            <View style={styles.healthLoading}>
+              <ActivityIndicator color={colors.accent} size="small" />
+              <Text style={styles.healthLoadingText}>Reading health data…</Text>
+            </View>
+          )}
+
           <Card padded={false} style={styles.modulesCard}>
-            {HEALTH_MODULES.map((mod, i) => (
+            {healthModules.map((mod, i) => (
               <React.Fragment key={mod.title}>
                 <ModuleTile mod={mod} />
-                {i < HEALTH_MODULES.length - 1 && <View style={styles.modDivider} />}
+                {i < healthModules.length - 1 && <View style={styles.modDivider} />}
               </React.Fragment>
             ))}
           </Card>
@@ -310,6 +442,12 @@ const styles = StyleSheet.create({
   nutritionValue: { fontSize: 20, fontWeight: "800", color: colors.textPrimary, letterSpacing: -0.3 },
   nutritionUnit: { fontSize: 11, color: colors.textTertiary, marginTop: 2 },
   nutritionDivider: { width: 1, height: 36, backgroundColor: colors.border },
+  nutritionSetupHint: { fontSize: 13, color: colors.textTertiary, textAlign: "center", paddingVertical: spacing.sm },
+  // Health connect prompt
+  connectPrompt: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm, backgroundColor: colors.card, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border, borderStyle: "dashed", padding: spacing.md },
+  connectPromptText: { flex: 1, fontSize: 12, color: colors.textSecondary, lineHeight: 18 },
+  healthLoading: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.sm },
+  healthLoadingText: { fontSize: 12, color: colors.textTertiary },
   // Modules
   modulesCard: {},
   moduleTile: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.md + 2 },

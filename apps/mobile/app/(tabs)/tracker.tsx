@@ -502,7 +502,34 @@ function NutritionGoalSetup({ onComplete }: { onComplete: (g: NutritionGoal) => 
 
 // ─── Nutrition: Food Search ────────────────────────────────────────────────────
 
-interface OFProduct { product_name: string; code: string; nutriments: { "energy-kcal_100g"?: number; proteins_100g?: number; carbohydrates_100g?: number; fat_100g?: number } }
+interface OFProduct {
+  product_name: string;
+  code: string;
+  brands?: string;
+  nutriments: {
+    "energy-kcal_100g"?: number;
+    proteins_100g?: number;
+    carbohydrates_100g?: number;
+    fat_100g?: number;
+  };
+}
+
+interface Per100 {
+  calories: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+}
+
+function calcForQty(per100: Per100, qty: number) {
+  const f = qty / 100;
+  return {
+    calories: Math.round(per100.calories * f),
+    proteinG: Math.round(per100.proteinG * f * 10) / 10,
+    carbsG: Math.round(per100.carbsG * f * 10) / 10,
+    fatG: Math.round(per100.fatG * f * 10) / 10,
+  };
+}
 
 function FoodSearchModal({
   visible,
@@ -513,19 +540,34 @@ function FoodSearchModal({
   visible: boolean;
   mealType: MealType;
   onClose: () => void;
-  onAdd: (entry: Omit<FoodEntry, "id" | "loggedAt">) => void;
+  onAdd: (entry: Omit<FoodEntry, "id" | "loggedAt">) => Promise<void>;
 }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<OFProduct[]>([]);
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [selected, setSelected] = useState<OFProduct | null>(null);
+  const [quantity, setQuantity] = useState("100");
+
+  const per100: Per100 = selected
+    ? {
+        calories: selected.nutriments["energy-kcal_100g"] ?? 0,
+        proteinG: selected.nutriments["proteins_100g"] ?? 0,
+        carbsG: selected.nutriments["carbohydrates_100g"] ?? 0,
+        fatG: selected.nutriments["fat_100g"] ?? 0,
+      }
+    : { calories: 0, proteinG: 0, carbsG: 0, fatG: 0 };
+
+  const qty = Math.max(1, parseInt(quantity, 10) || 100);
+  const preview = calcForQty(per100, qty);
 
   const search = useCallback(async (q: string) => {
     if (!q.trim()) return;
     setLoading(true);
     try {
       const res = await fetch(
-        `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&json=1&action=process&page_size=20&fields=code,product_name,nutriments`
+        `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&json=1&action=process&page_size=20&fields=code,product_name,brands,nutriments`
       );
       const data = await res.json();
       setResults(data.products ?? []);
@@ -536,126 +578,223 @@ function FoodSearchModal({
     }
   }, []);
 
-  const handleAdd = (product: OFProduct) => {
-    const n = product.nutriments;
-    const per100 = {
-      calories: n["energy-kcal_100g"] ?? 0,
-      proteinG: n["proteins_100g"] ?? 0,
-      carbsG: n["carbohydrates_100g"] ?? 0,
-      fatG: n["fat_100g"] ?? 0,
-    };
-    onAdd({
-      name: product.product_name || "Unknown",
-      mealType,
-      calories: Math.round(per100.calories),
-      proteinG: Math.round(per100.proteinG * 10) / 10,
-      carbsG: Math.round(per100.carbsG * 10) / 10,
-      fatG: Math.round(per100.fatG * 10) / 10,
-      quantity: 100,
-      unit: "g",
-      barcode: product.code,
-    });
-    onClose();
+  const handleConfirmAdd = async () => {
+    if (!selected) return;
+    setSaving(true);
+    try {
+      await onAdd({
+        name: selected.product_name || "Unknown",
+        brand: selected.brands,
+        mealType,
+        ...preview,
+        quantity: qty,
+        unit: "g",
+        barcode: selected.code,
+      });
+      onClose();
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <SafeAreaView style={styles.searchModal}>
+        {/* ── Header ─────────────────────────────────────── */}
         <View style={styles.searchHeader}>
-          <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-            <Ionicons name="close" size={20} color={colors.textPrimary} />
+          <TouchableOpacity
+            onPress={selected ? () => setSelected(null) : onClose}
+            style={styles.closeBtn}
+          >
+            <Ionicons
+              name={selected ? "arrow-back" : "close"}
+              size={20}
+              color={colors.textPrimary}
+            />
           </TouchableOpacity>
-          <Text style={styles.searchHeaderTitle}>Add food</Text>
+          <Text style={styles.searchHeaderTitle}>
+            {selected ? "Set serving size" : "Add food"}
+          </Text>
           <View style={{ width: 36 }} />
         </View>
 
-        <View style={styles.searchInputRow}>
-          <View style={styles.searchInputWrap}>
-            <Ionicons name="search-outline" size={16} color={colors.textTertiary} style={{ marginLeft: 12 }} />
-            <TextInput
-              style={styles.searchInput}
-              value={query}
-              onChangeText={setQuery}
-              placeholder="Search foods..."
-              placeholderTextColor={colors.textTertiary}
-              selectionColor={colors.accent}
-              returnKeyType="search"
-              onSubmitEditing={() => search(query)}
-              autoFocus
-            />
-          </View>
-          <TouchableOpacity
-            style={styles.scanBtn}
-            onPress={() => setScannerOpen(true)}
+        {selected ? (
+          /* ── Quantity confirmation step ─────────────────── */
+          <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
           >
-            <Ionicons name="scan-outline" size={20} color={colors.accent} />
-          </TouchableOpacity>
-        </View>
+            <ScrollView contentContainerStyle={styles.qtyContent}>
+              {/* Product info */}
+              <View style={styles.qtyProductCard}>
+                <Text style={styles.qtyProductName}>{selected.product_name || "Unknown"}</Text>
+                {selected.brands ? (
+                  <Text style={styles.qtyProductBrand}>{selected.brands}</Text>
+                ) : null}
+              </View>
 
-        {loading ? (
-          <View style={styles.loadingWrap}>
-            <ActivityIndicator color={colors.accent} />
-            <Text style={styles.loadingText}>Searching OpenFoodFacts...</Text>
-          </View>
+              {/* Quantity input */}
+              <View style={styles.qtyRow}>
+                <TouchableOpacity
+                  style={styles.qtyBtn}
+                  onPress={() => setQuantity((v) => String(Math.max(1, (parseInt(v, 10) || 100) - 10)))}
+                >
+                  <Ionicons name="remove" size={20} color={colors.accent} />
+                </TouchableOpacity>
+                <View style={styles.qtyInputWrap}>
+                  <TextInput
+                    style={styles.qtyInput}
+                    value={quantity}
+                    onChangeText={setQuantity}
+                    keyboardType="numeric"
+                    selectTextOnFocus
+                  />
+                  <Text style={styles.qtyUnit}>g</Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.qtyBtn}
+                  onPress={() => setQuantity((v) => String((parseInt(v, 10) || 100) + 10))}
+                >
+                  <Ionicons name="add" size={20} color={colors.accent} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Macro preview */}
+              <View style={styles.qtyMacros}>
+                <View style={styles.qtyMacroItem}>
+                  <Text style={styles.qtyMacroValue}>{preview.calories}</Text>
+                  <Text style={styles.qtyMacroLabel}>kcal</Text>
+                </View>
+                <View style={styles.qtyMacroDivider} />
+                <View style={styles.qtyMacroItem}>
+                  <Text style={styles.qtyMacroValue}>{preview.proteinG}g</Text>
+                  <Text style={styles.qtyMacroLabel}>Protein</Text>
+                </View>
+                <View style={styles.qtyMacroDivider} />
+                <View style={styles.qtyMacroItem}>
+                  <Text style={styles.qtyMacroValue}>{preview.carbsG}g</Text>
+                  <Text style={styles.qtyMacroLabel}>Carbs</Text>
+                </View>
+                <View style={styles.qtyMacroDivider} />
+                <View style={styles.qtyMacroItem}>
+                  <Text style={styles.qtyMacroValue}>{preview.fatG}g</Text>
+                  <Text style={styles.qtyMacroLabel}>Fat</Text>
+                </View>
+              </View>
+
+              <TouchableOpacity
+                style={[styles.addConfirmBtn, saving && { opacity: 0.6 }]}
+                onPress={handleConfirmAdd}
+                disabled={saving}
+              >
+                {saving ? (
+                  <ActivityIndicator color="#0C0F1A" size="small" />
+                ) : (
+                  <>
+                    <Ionicons name="checkmark" size={18} color="#0C0F1A" />
+                    <Text style={styles.addConfirmBtnText}>Add to {MEAL_LABELS[mealType]}</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
+          </KeyboardAvoidingView>
         ) : (
-          <FlatList
-            data={results}
-            keyExtractor={(_, i) => `${i}`}
-            contentContainerStyle={styles.searchResults}
-            renderItem={({ item }) => {
-              const n = item.nutriments;
-              const kcal = n["energy-kcal_100g"] ?? 0;
-              const prot = n["proteins_100g"] ?? 0;
-              return (
-                <TouchableOpacity style={styles.searchResult} onPress={() => handleAdd(item)} activeOpacity={0.8}>
-                  <View style={styles.searchResultLeft}>
-                    <Text style={styles.searchResultName} numberOfLines={2}>{item.product_name || "Unknown"}</Text>
-                    <Text style={styles.searchResultMeta}>
-                      {Math.round(kcal)} kcal · {Math.round(prot)}g protein <Text style={styles.searchResultPer}>per 100g</Text>
+          /* ── Search step ─────────────────────────────────── */
+          <>
+            <View style={styles.searchInputRow}>
+              <View style={styles.searchInputWrap}>
+                <Ionicons name="search-outline" size={16} color={colors.textTertiary} style={{ marginLeft: 12 }} />
+                <TextInput
+                  style={styles.searchInput}
+                  value={query}
+                  onChangeText={setQuery}
+                  placeholder="Search foods..."
+                  placeholderTextColor={colors.textTertiary}
+                  selectionColor={colors.accent}
+                  returnKeyType="search"
+                  onSubmitEditing={() => search(query)}
+                  autoFocus
+                />
+              </View>
+              <TouchableOpacity
+                style={styles.scanBtn}
+                onPress={() => setScannerOpen(true)}
+              >
+                <Ionicons name="scan-outline" size={20} color={colors.accent} />
+              </TouchableOpacity>
+            </View>
+
+            {loading ? (
+              <View style={styles.loadingWrap}>
+                <ActivityIndicator color={colors.accent} />
+                <Text style={styles.loadingText}>Searching OpenFoodFacts…</Text>
+              </View>
+            ) : (
+              <FlatList
+                data={results}
+                keyExtractor={(_, i) => `${i}`}
+                contentContainerStyle={styles.searchResults}
+                renderItem={({ item }) => {
+                  const kcal = item.nutriments["energy-kcal_100g"] ?? 0;
+                  const prot = item.nutriments["proteins_100g"] ?? 0;
+                  return (
+                    <TouchableOpacity
+                      style={styles.searchResult}
+                      onPress={() => { setSelected(item); setQuantity("100"); }}
+                      activeOpacity={0.8}
+                    >
+                      <View style={styles.searchResultLeft}>
+                        <Text style={styles.searchResultName} numberOfLines={2}>
+                          {item.product_name || "Unknown"}
+                        </Text>
+                        <Text style={styles.searchResultMeta}>
+                          {Math.round(kcal)} kcal · {Math.round(prot)}g protein{" "}
+                          <Text style={styles.searchResultPer}>per 100g</Text>
+                        </Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
+                    </TouchableOpacity>
+                  );
+                }}
+                ListEmptyComponent={
+                  <View style={styles.noResults}>
+                    <Text style={styles.noResultsText}>
+                      {query.trim()
+                        ? "No results. Try a different search."
+                        : "Search for a food or scan a barcode."}
                     </Text>
                   </View>
-                  <Ionicons name="add-circle-outline" size={22} color={colors.accent} />
-                </TouchableOpacity>
-              );
-            }}
-            ListEmptyComponent={
-              query.trim() ? (
-                <View style={styles.noResults}>
-                  <Text style={styles.noResultsText}>No results. Try a different search.</Text>
-                </View>
-              ) : (
-                <View style={styles.noResults}>
-                  <Text style={styles.noResultsText}>Search for a food or scan a barcode.</Text>
-                </View>
-              )
-            }
-          />
-        )}
-
-        {/* Barcode scanner overlay */}
-        {scannerOpen && (
-          <BarcodeScannerOverlay
-            onClose={() => setScannerOpen(false)}
-            onScanned={async (code) => {
-              setScannerOpen(false);
-              setLoading(true);
-              try {
-                const res = await fetch(
-                  `https://world.openfoodfacts.org/api/v0/product/${code}.json?fields=product_name,nutriments,code`
-                );
-                const data = await res.json();
-                if (data.product?.product_name) {
-                  setResults([data.product]);
-                } else {
-                  Alert.alert("Not found", "Product not found in database.");
                 }
-              } catch {
-                Alert.alert("Error", "Could not fetch product details.");
-              } finally {
-                setLoading(false);
-              }
-            }}
-          />
+              />
+            )}
+
+            {/* Barcode scanner overlay */}
+            {scannerOpen && (
+              <BarcodeScannerOverlay
+                onClose={() => setScannerOpen(false)}
+                onScanned={async (code) => {
+                  setScannerOpen(false);
+                  setLoading(true);
+                  try {
+                    const res = await fetch(
+                      `https://world.openfoodfacts.org/api/v0/product/${code}.json?fields=product_name,brands,nutriments,code`
+                    );
+                    const data = await res.json();
+                    if (data.product?.product_name) {
+                      setSelected(data.product);
+                      setQuantity("100");
+                    } else {
+                      Alert.alert("Not found", "Product not found in OpenFoodFacts database.");
+                    }
+                  } catch {
+                    Alert.alert("Error", "Could not fetch product details.");
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+              />
+            )}
+          </>
         )}
       </SafeAreaView>
     </Modal>
@@ -749,17 +888,20 @@ function NutritionSection() {
     const weight = onboardingData?.weightKg ?? 75;
     const height = onboardingData?.heightCm ?? 175;
     const dob = onboardingData?.dateOfBirth;
-    const ageYears = dob ? (Date.now() - new Date(dob).getTime()) / (1000 * 60 * 60 * 24 * 365.25) : 30;
+    const ageYears = dob
+      ? (Date.now() - new Date(dob).getTime()) / (1000 * 60 * 60 * 24 * 365.25)
+      : 30;
 
     return (
       <NutritionGoalSetup
-        onComplete={(g) => setGoal(g, weight, height, ageYears)}
+        onComplete={(g) => { void setGoal(g, weight, height, ageYears); }}
       />
     );
   }
 
   const calPct = targets.calories > 0 ? totals.calories / targets.calories : 0;
-  const todayEntries = foodLog.filter((e) => e.loggedAt.startsWith(new Date().toISOString().split("T")[0]!));
+  // foodLog already contains only today's entries (fetched by logged_date from Supabase)
+  const todayEntries = foodLog;
 
   return (
     <ScrollView contentContainerStyle={styles.sectionContent} showsVerticalScrollIndicator={false}>
@@ -822,7 +964,7 @@ function NutritionSection() {
                   </View>
                   <View style={styles.foodEntryRight}>
                     <Text style={styles.foodCals}>{entry.calories} kcal</Text>
-                    <TouchableOpacity onPress={() => removeFoodEntry(entry.id)}>
+                    <TouchableOpacity onPress={() => { void removeFoodEntry(entry.id); }}>
                       <Ionicons name="trash-outline" size={14} color={colors.textTertiary} />
                     </TouchableOpacity>
                   </View>
@@ -834,7 +976,7 @@ function NutritionSection() {
       })}
 
       {/* Reset goal */}
-      <TouchableOpacity onPress={clearGoal} style={styles.resetGoalBtn}>
+      <TouchableOpacity onPress={() => { void clearGoal(); }} style={styles.resetGoalBtn}>
         <Ionicons name="refresh-outline" size={14} color={colors.textTertiary} />
         <Text style={styles.resetGoalLabel}>Reset nutrition goal</Text>
       </TouchableOpacity>
@@ -1024,6 +1166,23 @@ const styles = StyleSheet.create({
   loadingText: { fontSize: 13, color: colors.textSecondary },
   noResults: { alignItems: "center", paddingVertical: 40 },
   noResultsText: { fontSize: 14, color: colors.textSecondary },
+  // Quantity confirmation step
+  qtyContent: { padding: spacing.lg, gap: spacing.xl, paddingBottom: 60 },
+  qtyProductCard: { backgroundColor: colors.card, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.lg, gap: 4 },
+  qtyProductName: { fontSize: 16, fontWeight: "700", color: colors.textPrimary },
+  qtyProductBrand: { fontSize: 12, color: colors.textTertiary },
+  qtyRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, justifyContent: "center" },
+  qtyBtn: { width: 48, height: 48, borderRadius: 24, backgroundColor: colors.accentMuted, borderWidth: 1, borderColor: colors.accent + "40", alignItems: "center", justifyContent: "center" },
+  qtyInputWrap: { flexDirection: "row", alignItems: "baseline", gap: 4, backgroundColor: colors.card, borderRadius: radii.md, borderWidth: 1.5, borderColor: colors.accent, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, minWidth: 110, justifyContent: "center" },
+  qtyInput: { fontSize: 28, fontWeight: "800", color: colors.textPrimary, textAlign: "center", minWidth: 60 },
+  qtyUnit: { fontSize: 14, color: colors.textTertiary, fontWeight: "600" },
+  qtyMacros: { flexDirection: "row", backgroundColor: colors.card, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.lg, justifyContent: "space-around", alignItems: "center" },
+  qtyMacroItem: { alignItems: "center", gap: 4 },
+  qtyMacroValue: { fontSize: 18, fontWeight: "800", color: colors.textPrimary },
+  qtyMacroLabel: { fontSize: 11, color: colors.textTertiary, fontWeight: "600" },
+  qtyMacroDivider: { width: 1, height: 30, backgroundColor: colors.border },
+  addConfirmBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, height: 52, backgroundColor: colors.accent, borderRadius: radii.lg },
+  addConfirmBtnText: { fontSize: 16, fontWeight: "700", color: "#0C0F1A" },
   // Barcode scanner
   scanOverlay: { backgroundColor: "#000", alignItems: "center", justifyContent: "center" },
   scanOverlayText: { color: "#fff", fontSize: 14 },
