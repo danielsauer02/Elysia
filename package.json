@@ -1,0 +1,19 @@
+{
+  "name": "elysia-longevity-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Mobile-first longevity ecosystem monorepo scaffold.",
+  "workspaces": [
+    "apps/*",
+    "services/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "typecheck": "npm run -ws typecheck",
+    "lint": "npm run -ws lint",
+    "test": "npm run -ws test"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

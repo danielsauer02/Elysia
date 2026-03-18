@@ -1,0 +1,25 @@
+{
+  "name": "@elysia/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "node dist/server.js",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo \"No linter configured for @elysia/api\"",
+    "test": "echo \"No tests configured for @elysia/api\""
+  },
+  "dependencies": {
+    "@elysia/domain": "0.1.0",
+    "@fastify/cors": "^10.0.2",
+    "fastify": "^5.1.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
