@@ -27,6 +27,7 @@ interface HabitsContextValue {
   isHabitAddedFromTemplate: (templateId: string) => boolean;
   addSupplementHabit: (title: string, category: string, productId: string) => void;
   isProductTracked: (productId: string) => boolean;
+  addCustomHabit: (title: string, category: string, state: "active" | "planned") => void;
   getActiveHabits: () => UserHabit[];
   getTodayProgress: () => { completed: number; total: number };
 }
@@ -164,6 +165,29 @@ export function HabitsProvider({ children }: { children: ReactNode }) {
     [habits]
   );
 
+  const addCustomHabit = useCallback(
+    (title: string, category: string, state: "active" | "planned") => {
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+      const newHabit: UserHabit = {
+        habitId: generateId(),
+        userId: "current-user",
+        templateId: undefined,
+        title,
+        category,
+        expectedBenefit: "Custom habit.",
+        state,
+        schedule: { frequencyPerWeek: 7, targetTimesOfDay: ["morning"], startsOn: todayISO() },
+        reminderRule: { reminderTimeLocal: "08:00", timezone, pushEnabled: false },
+        streakCount: 0,
+        completionRate30d: 0,
+        createdAt: nowISO(),
+        updatedAt: nowISO(),
+      };
+      setHabits((prev) => [newHabit, ...prev]);
+    },
+    []
+  );
+
   const getActiveHabits = useCallback(
     () => habits.filter((h) => h.state === "active"),
     [habits]
@@ -185,6 +209,7 @@ export function HabitsProvider({ children }: { children: ReactNode }) {
         isHabitAddedFromTemplate,
         addSupplementHabit,
         isProductTracked,
+        addCustomHabit,
         getActiveHabits,
         getTodayProgress,
       }}

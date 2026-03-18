@@ -27,24 +27,32 @@ export default function TabLayout() {
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.textTertiary,
         tabBarStyle: {
-          height: Platform.OS === "ios" ? 84 : 66,
+          // Floating pill tab bar
+          marginHorizontal: 14,
+          marginBottom: Platform.OS === "ios" ? 14 : 10,
+          borderRadius: 22,
+          height: Platform.OS === "ios" ? 68 : 62,
           paddingTop: 8,
-          paddingBottom: Platform.OS === "ios" ? 26 : 10,
+          paddingBottom: Platform.OS === "ios" ? 12 : 8,
           backgroundColor: colors.surface,
-          borderTopColor: colors.border,
-          borderTopWidth: 1,
+          borderTopWidth: 0,
+          borderWidth: 1,
+          borderColor: colors.border,
+          elevation: 0,
+          shadowOpacity: 0,
         },
         tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: "600",
+          fontSize: 10,
+          fontWeight: "700",
           letterSpacing: 0.2,
+          marginTop: 2,
         },
         tabBarLabel: labelByRoute[route.name] ?? route.name,
         tabBarIcon: ({ color, size }) => (
           <Ionicons
             name={iconByRoute[route.name] ?? "ellipse-outline"}
             color={color}
-            size={size}
+            size={22}
           />
         ),
       })}

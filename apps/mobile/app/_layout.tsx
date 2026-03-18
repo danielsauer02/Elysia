@@ -2,6 +2,7 @@ import { Stack, Redirect } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { AppProvider, useAppContext } from "@/context/AppContext";
 import { HabitsProvider } from "@/context/HabitsContext";
+import { NutritionProvider } from "@/context/NutritionContext";
 
 function RootNavigator() {
   const { isOnboarded } = useAppContext();
@@ -32,7 +33,9 @@ export default function RootLayout() {
   return (
     <AppProvider>
       <HabitsProvider>
-        <RootNavigator />
+        <NutritionProvider>
+          <RootNavigator />
+        </NutritionProvider>
       </HabitsProvider>
     </AppProvider>
   );
