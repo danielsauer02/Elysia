@@ -9,6 +9,8 @@
     "packages/*"
   ],
   "scripts": {
+    "mobile": "npm run start --workspace=@elysia/mobile",
+    "api": "npm run dev --workspace=@elysia/api",
     "typecheck": "npm run -ws typecheck",
     "lint": "npm run -ws lint",
     "test": "npm run -ws test"
