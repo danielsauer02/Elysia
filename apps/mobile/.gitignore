@@ -4,3 +4,7 @@
 
 expo-env.d.ts
 # @end expo-cli
+
+# Environment variables (contain secrets)
+.env
+.env.local

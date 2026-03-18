@@ -2,7 +2,6 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "src",
     "baseUrl": ".",
     "paths": {
       "@elysia/domain": [
@@ -11,6 +10,7 @@
     }
   },
   "include": [
-    "src/**/*.ts"
+    "src/**/*.ts",
+    "../../packages/domain/src/**/*.ts"
   ]
 }

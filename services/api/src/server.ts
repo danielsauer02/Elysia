@@ -1,5 +1,7 @@
+import "dotenv/config";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import { registerAuthPlugin } from "./plugins/auth.js";
 import { registerAuthRoutes } from "./modules/auth/routes.js";
 import { registerProfileRoutes } from "./modules/profile/routes.js";
 import { registerHabitRoutes } from "./modules/habits/routes.js";
@@ -14,12 +16,17 @@ const app = Fastify({ logger: true });
 
 await app.register(cors, { origin: true });
 
+// ── Plugins ──────────────────────────────────────────────────────────────────
+await registerAuthPlugin(app);
+
+// ── Health ───────────────────────────────────────────────────────────────────
 app.get("/health", async () => ({
   ok: true,
   service: "elysia-api",
-  status: "healthy"
+  status: "healthy",
 }));
 
+// ── Routes ───────────────────────────────────────────────────────────────────
 await registerAuthRoutes(app);
 await registerProfileRoutes(app);
 await registerHabitRoutes(app);
@@ -36,7 +43,7 @@ const host = process.env.HOST ?? "0.0.0.0";
 app
   .listen({ port, host })
   .then(() => {
-    app.log.info(`API running on ${host}:${port}`);
+    app.log.info(`API running on http://${host}:${port}`);
   })
   .catch((error) => {
     app.log.error(error);

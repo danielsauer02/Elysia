@@ -127,8 +127,8 @@ export default function OnboardingScreen() {
     return true;
   };
 
-  const handleFinish = () => {
-    completeOnboarding({
+  const handleFinish = async () => {
+    await completeOnboarding({
       name: name.trim(),
       dateOfBirth: currentDOB,
       heightCm: currentHeight,
@@ -161,8 +161,8 @@ export default function OnboardingScreen() {
           )}
           <StepDots current={step} total={TOTAL_STEPS} />
           <TouchableOpacity
-            onPress={() => {
-              completeOnboarding({
+            onPress={async () => {
+              await completeOnboarding({
                 name: "Alex",
                 dateOfBirth: "1990-06-15",
                 heightCm: 178,

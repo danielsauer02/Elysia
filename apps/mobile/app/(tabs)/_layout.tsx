@@ -6,7 +6,7 @@ import { Platform } from "react-native";
 const iconByRoute: Record<string, keyof typeof Ionicons.glyphMap> = {
   dashboard: "analytics-outline",
   elysia: "leaf-outline",
-  tracker: "activity-outline",
+  tracker: "fitness-outline",
   products: "storefront-outline",
   settings: "person-circle-outline",
 };
