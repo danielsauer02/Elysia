@@ -37,8 +37,9 @@ export default function LoginScreen() {
     setLoading(false);
     if (authError) {
       setError(authError);
+    } else {
+      router.replace("/");
     }
-    // On success, AuthContext updates session → RootNavigator redirects automatically
   };
 
   return (
