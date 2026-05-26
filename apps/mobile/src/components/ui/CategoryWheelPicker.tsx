@@ -1,225 +1,211 @@
-/**
- * Vertical drum-roll category selector.
- * Shows 3 items at a time: previous (top, dimmed), selected (center, highlighted),
- * next (bottom, dimmed). Swipe up/down to change selection.
- */
-import React, { useRef, useState, useEffect, useCallback } from "react";
+import React, {
+  useRef,
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+} from "react";
 import {
   View,
-  Text,
   ScrollView,
+  Text,
   StyleSheet,
   NativeSyntheticEvent,
   NativeScrollEvent,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { colors, categoryColors, categoryIcons, radii, spacing } from "@/theme";
+import { colors, categoryIcons, radii, spacing } from "@/theme";
 
-const ITEM_HEIGHT = 58;
-const VISIBLE = 3;
+/** Compact 3-row slicer; tighter vertical footprint. */
+const ITEM_HEIGHT = 34;
+const VISIBLE_COUNT = 3;
+const PADDING = Math.floor(VISIBLE_COUNT / 2);
 
-// Insert null padding at top and bottom so first/last items can be centered
-const PADDING = 1; // 1 empty slot above and below
-
-interface CategoryWheelPickerProps {
-  categories: string[];   // raw keys like "sleep", "cold_exposure"
-  selected: string;       // "All" or a raw key
+export type CategoryWheelPickerProps = {
+  /** Category labels without "All". "All" is prepended automatically. */
+  categories: string[];
+  selected: string;
   onSelect: (category: string) => void;
-}
+};
 
-function categoryLabel(key: string): string {
-  return key === "All" ? "All" : key.replace(/_/g, " ");
-}
-
-function categoryColor(key: string): string {
-  return key === "All" ? colors.accent : (categoryColors[key] ?? colors.accent);
-}
-
-function categoryIcon(key: string): keyof typeof Ionicons.glyphMap {
-  if (key === "All") return "grid-outline";
-  return (categoryIcons[key] ?? "ellipse-outline") as keyof typeof Ionicons.glyphMap;
-}
-
+/**
+ * Plain background, accent-only typography/icons; prev / center / next emphasis via scroll position.
+ */
 export function CategoryWheelPicker({
   categories,
   selected,
   onSelect,
 }: CategoryWheelPickerProps) {
-  const allItems = ["All", ...categories];
-  const padded = [null, ...allItems, null];
-
-  const initialIdx = Math.max(0, allItems.indexOf(selected));
-  const [centerIdx, setCenterIdx] = useState(initialIdx);
-  const [mounted, setMounted] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
+  const labels = useMemo(() => ["All", ...categories], [categories]);
+
+  const indexOf = useCallback(
+    (label: string) => {
+      const i = labels.indexOf(label);
+      return i >= 0 ? i : 0;
+    },
+    [labels]
+  );
+
+  const [selectedIdx, setSelectedIdx] = useState(() => indexOf(selected));
+  const [mounted, setMounted] = useState(false);
+  const [scrollY, setScrollY] = useState(0);
+
+  useEffect(() => {
+    setSelectedIdx(indexOf(selected));
+  }, [selected, indexOf]);
 
   useEffect(() => {
     if (!mounted) return;
-    const targetIdx = allItems.indexOf(selected);
-    if (targetIdx >= 0 && targetIdx !== centerIdx) {
-      scrollRef.current?.scrollTo({ y: targetIdx * ITEM_HEIGHT, animated: true });
-      setCenterIdx(targetIdx);
-    }
-  }, [selected, mounted]);
+    scrollRef.current?.scrollTo({
+      y: selectedIdx * ITEM_HEIGHT,
+      animated: false,
+    });
+    setScrollY(selectedIdx * ITEM_HEIGHT);
+  }, [mounted, labels.length, selectedIdx]);
 
-  useEffect(() => {
-    if (mounted) {
-      scrollRef.current?.scrollTo({ y: initialIdx * ITEM_HEIGHT, animated: false });
-    }
-  }, [mounted]);
+  const applyIndex = useCallback(
+    (idx: number) => {
+      const clamped = Math.max(0, Math.min(labels.length - 1, idx));
+      setSelectedIdx(clamped);
+      const label = labels[clamped];
+      if (label) onSelect(label);
+    },
+    [labels, onSelect]
+  );
 
   const handleScrollEnd = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
       const y = e.nativeEvent.contentOffset.y;
       const idx = Math.round(y / ITEM_HEIGHT);
-      const clamped = Math.max(0, Math.min(allItems.length - 1, idx));
-      setCenterIdx(clamped);
-      onSelect(allItems[clamped]!);
+      applyIndex(idx);
     },
-    [allItems, onSelect]
+    [applyIndex]
   );
 
-  const selectedKey = allItems[centerIdx] ?? "All";
-  const accentColor = categoryColor(selectedKey);
+  const onScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    setScrollY(e.nativeEvent.contentOffset.y);
+  }, []);
+
+  const padded = useMemo(
+    () => [...Array(PADDING).fill(null), ...labels, ...Array(PADDING).fill(null)],
+    [labels]
+  );
+
+  const wheelHeight = ITEM_HEIGHT * VISIBLE_COUNT;
+
+  const rowMetrics = useCallback(
+    (contentIndex: number) => {
+      const viewportCenter = scrollY + wheelHeight / 2;
+      const rowCenter = contentIndex * ITEM_HEIGHT + ITEM_HEIGHT / 2;
+      const distRows = Math.abs(rowCenter - viewportCenter) / ITEM_HEIGHT;
+      const focus = Math.max(0, 1 - Math.min(distRows, 1.2) / 1.2);
+      const opacity = 0.28 + focus * 0.72;
+      const fontSize = 12 + focus * 5;
+      const iconSize = 15 + focus * 5;
+      const fontWeight = focus > 0.65 ? ("800" as const) : ("600" as const);
+      return { opacity, fontSize, iconSize, fontWeight };
+    },
+    [scrollY, wheelHeight]
+  );
 
   return (
-    <View style={styles.container}>
-      {/* Center highlight band */}
-      <View
-        style={[
-          styles.centerHighlight,
-          { backgroundColor: accentColor + "14", borderColor: accentColor + "40" },
-        ]}
-        pointerEvents="none"
-      />
+    <View style={styles.outer}>
+      <View style={[styles.shell, { height: wheelHeight }]}>
+        <ScrollView
+          ref={scrollRef}
+          style={styles.scroll}
+          showsVerticalScrollIndicator={false}
+          snapToInterval={ITEM_HEIGHT}
+          decelerationRate="fast"
+          onMomentumScrollEnd={handleScrollEnd}
+          onScrollEndDrag={handleScrollEnd}
+          onScroll={onScroll}
+          scrollEventThrottle={16}
+          onLayout={() => setMounted(true)}
+        >
+          {padded.map((label, i) => {
+            const isPad = label === null;
+            const m = rowMetrics(i);
 
-      {/* Fade gradients top + bottom */}
-      <View style={styles.fadeTop} pointerEvents="none" />
-      <View style={styles.fadeBottom} pointerEvents="none" />
+            const rawKey =
+              typeof label === "string"
+                ? label.toLowerCase().replace(/ /g, "_")
+                : "";
+            const iconName = (
+              label === "All"
+                ? "grid-outline"
+                : categoryIcons[rawKey] ?? "ellipse-outline"
+            ) as keyof typeof Ionicons.glyphMap;
 
-      <ScrollView
-        ref={scrollRef}
-        style={styles.scroll}
-        showsVerticalScrollIndicator={false}
-        snapToInterval={ITEM_HEIGHT}
-        decelerationRate="fast"
-        onMomentumScrollEnd={handleScrollEnd}
-        onScrollEndDrag={handleScrollEnd}
-        scrollEventThrottle={16}
-        onLayout={() => setMounted(true)}
-      >
-        {padded.map((key, i) => {
-          const dataIdx = i - PADDING;
-          const distance = Math.abs(dataIdx - centerIdx);
-          const isCenter = distance === 0 && key !== null;
-          const isAdjacent = distance === 1 && key !== null;
-          const itemColor = key ? categoryColor(key) : "transparent";
-          const icon = key ? categoryIcon(key) : "ellipse-outline";
-
-          return (
-            <View key={i} style={[styles.item, { height: ITEM_HEIGHT }]}>
-              {key !== null && (
-                <View
-                  style={[
-                    styles.pill,
-                    isCenter && {
-                      backgroundColor: itemColor + "18",
-                      borderColor: itemColor + "50",
-                      borderWidth: 1,
-                    },
-                  ]}
-                >
-                  <Ionicons
-                    name={icon}
-                    size={isCenter ? 15 : 13}
-                    color={isCenter ? itemColor : colors.textTertiary}
-                    style={styles.pillIcon}
-                  />
-                  <Text
-                    style={[
-                      styles.pillLabel,
-                      {
-                        color: isCenter
-                          ? itemColor
-                          : isAdjacent
-                          ? colors.textTertiary
-                          : "transparent",
-                        fontSize: isCenter ? 16 : 13,
-                        fontWeight: isCenter ? "700" : "500",
-                        opacity: isCenter ? 1 : isAdjacent ? 0.55 : 0,
-                      },
-                    ]}
-                  >
-                    {categoryLabel(key)}
-                  </Text>
-                </View>
-              )}
-            </View>
-          );
-        })}
-      </ScrollView>
+            return (
+              <View key={`${i}-${label ?? "pad"}`} style={styles.itemRow}>
+                {!isPad ? (
+                  <View style={styles.itemInner}>
+                    <Ionicons
+                      name={iconName}
+                      size={m.iconSize}
+                      color={colors.accent}
+                      style={{ opacity: m.opacity }}
+                    />
+                    <Text
+                      style={[
+                        styles.itemLabel,
+                        {
+                          opacity: m.opacity,
+                          fontSize: m.fontSize,
+                          fontWeight: m.fontWeight,
+                          color: colors.accent,
+                        },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {label}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            );
+          })}
+        </ScrollView>
+      </View>
     </View>
   );
 }
 
-const TOTAL_HEIGHT = ITEM_HEIGHT * VISIBLE;
-
 const styles = StyleSheet.create({
-  container: {
-    height: TOTAL_HEIGHT,
+  outer: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.sm,
+    alignItems: "center",
+  },
+  shell: {
+    width: "100%",
+    maxWidth: 300,
+    borderRadius: radii.md,
     overflow: "hidden",
     position: "relative",
-    marginHorizontal: spacing.lg,
+    backgroundColor: colors.background,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
   },
-  centerHighlight: {
-    position: "absolute",
-    top: ITEM_HEIGHT * PADDING,
-    left: 0,
-    right: 0,
+  scroll: {
+    flex: 1,
+  },
+  itemRow: {
     height: ITEM_HEIGHT,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    zIndex: 1,
-  },
-  fadeTop: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: ITEM_HEIGHT,
-    zIndex: 2,
-    backgroundColor: "transparent",
-    // Pointer events none so scroll still works
-  },
-  fadeBottom: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: ITEM_HEIGHT,
-    zIndex: 2,
-    backgroundColor: "transparent",
-  },
-  scroll: { flex: 1 },
-  item: {
-    alignItems: "center",
     justifyContent: "center",
+    alignItems: "center",
   },
-  pill: {
+  itemInner: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: radii.full,
-    gap: 7,
-    borderWidth: 0,
-    borderColor: "transparent",
-    minWidth: 160,
-    justifyContent: "center",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
   },
-  pillIcon: {},
-  pillLabel: {
-    textTransform: "capitalize",
-    letterSpacing: 0.1,
+  itemLabel: {
+    flexShrink: 1,
+    letterSpacing: -0.2,
   },
 });

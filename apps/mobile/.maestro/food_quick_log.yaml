@@ -1,0 +1,18 @@
+appId: com.elysia.app
+name: Quick-log a food entry from the tracker
+---
+- launchApp
+- tapOn: "Tracker"
+- tapOn: "Nutrition"
+- tapOn:
+    text: "Add food"
+    index: 0
+- assertVisible:
+    text: "Search Open Food Facts"
+    timeout: 10000
+- tapOn: "Search Open Food Facts"
+- inputText: "banana"
+- tapOn:
+    text: "Banana.*"
+    index: 0
+- assertVisible: ".*kcal.*"

@@ -1,39 +1,52 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
-  ScrollView,
   Text,
   View,
   StyleSheet,
   TouchableOpacity,
-  ActivityIndicator,
+  Animated,
+  Modal,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import RNAnimated from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { colors, spacing, radii } from "@/theme";
+import {
+  colors,
+  radii,
+  spacing,
+  surface,
+  text,
+  typography,
+} from "@/theme";
 import { Card } from "@/components/ui/Card";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { SectionHeader } from "@/components/ui/SectionHeader";
-import { AgingCurveChart } from "@/components/ui/AgingCurveChart";
-import { useHabits } from "@/context/HabitsContext";
+import { LongevityPerformanceView, type TimeFilter, type LockedPillar } from "@/components/ui/LongevityPerformanceView";
+import { HourglassDnaAnimation } from "@/components/longevity/HourglassDnaAnimation";
+import { AgingFactorScale } from "@/components/longevity/AgingFactorScale";
+import { LifeTrajectoryModal } from "@/components/longevity/LifeTrajectoryModal";
+import { useLongevityData } from "@/hooks/useLongevityData";
+import { PerformanceCircles } from "@/components/ui/PerformanceCircles";
 import { useAppContext } from "@/context/AppContext";
 import { useNutrition } from "@/context/NutritionContext";
-import {
-  readTodayHealthData,
-  requestHealthPermissions,
-  isHealthAvailable,
-  type HealthData,
-} from "@/lib/healthkit";
-import { mockUserSummary } from "@/mocks/data";
-import { getGreeting } from "@/utils/date";
+import { useFloatingTabBarScrollPadding } from "@/hooks/useFloatingTabBarScrollPadding";
+import { useAppTopBarHeight } from "@/components/navigation/AppTopBar";
+import { EnergyBalanceCard } from "@/components/analytics/EnergyBalanceCard";
+import { InsightsFeed } from "@/components/ai/InsightsFeed";
+import { HealthDataGrid } from "@/components/dashboard/HealthDataGrid";
+import { useStickyRingsHeader } from "@/components/dashboard/StickyRingsHeader";
+import type { SummaryRingValue } from "@/components/dashboard/DailySummaryRings";
 
 // ─── Mock aging data ─────────────────────────────────────────────────────────
-// Simulates 3 months of biological age tracking since the user joined.
-const MOCK_AGING_HISTORY = [
-  { chronoAge: 31.75, bioAge: 32.3 },
-  { chronoAge: 31.83, bioAge: 32.1 },
-  { chronoAge: 31.92, bioAge: 31.8 },
-  { chronoAge: 32.0, bioAge: 31.5 },
+/**
+ * Tier 2 / Tier 3 pillars surfaced as locked entries in the contributions
+ * waterfall so the user sees the roadmap.
+ */
+const LOCKED_PILLARS: LockedPillar[] = [
+  { category: "blood",    label: "Blood Panel",    tier: 2, icon: "water-outline" },
+  { category: "bodyComp", label: "Body Composition", tier: 2, icon: "fitness-outline" },
+  { category: "genetic",  label: "Genetics",       tier: 3, icon: "git-network-outline" },
+  { category: "skin",     label: "Skin Age",       tier: 3, icon: "scan-outline" },
 ];
 
 function calcChronoAge(dob?: string): number {
@@ -42,12 +55,9 @@ function calcChronoAge(dob?: string): number {
   return ms / (1000 * 60 * 60 * 24 * 365.25);
 }
 
-// ─── Small stat card ─────────────────────────────────────────────────────────
+// ─── Stat pill ────────────────────────────────────────────────────────────────
 function StatPill({
-  icon,
-  label,
-  value,
-  color,
+  icon, label, value, color,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
@@ -57,7 +67,7 @@ function StatPill({
   return (
     <View style={[styles.statPill, { backgroundColor: color + "12", borderColor: color + "30" }]}>
       <Ionicons name={icon} size={14} color={color} />
-      <View style={styles.statPillText}>
+      <View>
         <Text style={[styles.statPillValue, { color }]}>{value}</Text>
         <Text style={styles.statPillLabel}>{label}</Text>
       </View>
@@ -65,142 +75,14 @@ function StatPill({
   );
 }
 
-// ─── Health data hook ─────────────────────────────────────────────────────────
-
-function useHealthData() {
-  const [data, setData] = useState<HealthData | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [permissionsGranted, setPermissionsGranted] = useState(false);
-  const available = isHealthAvailable();
-
-  const requestAndRead = useCallback(async () => {
-    if (!available) return;
-    setLoading(true);
-    try {
-      const granted = await requestHealthPermissions();
-      setPermissionsGranted(granted);
-      if (granted) {
-        const healthData = await readTodayHealthData();
-        setData(healthData);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [available]);
-
-  useEffect(() => {
-    if (available) {
-      void requestAndRead();
-    }
-  }, [available, requestAndRead]);
-
-  return { data, loading, permissionsGranted, available, requestAndRead };
-}
-
-// ─── Health module row ───────────────────────────────────────────────────────
-interface ModuleData {
-  title: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  status: "connected" | "connect" | "coming_soon";
-  value?: string;
-  unit?: string;
-  sub?: string;
-  color: string;
-}
-
-function buildHealthModules(data: HealthData | null): ModuleData[] {
-  const isConnected = (v: number | null | undefined): v is number => v != null;
-  return [
-    {
-      title: "HRV",
-      icon: "pulse-outline" as const,
-      color: "#818CF8",
-      status: (isConnected(data?.hrvMs) ? "connected" : "connect") as ModuleData["status"],
-      value: isConnected(data?.hrvMs) ? String(Math.round(data!.hrvMs!)) : undefined,
-      unit: "ms",
-      sub: "Heart rate variability",
-    },
-    {
-      title: "Sleep",
-      icon: "moon-outline" as const,
-      color: "#A78BFA",
-      status: (isConnected(data?.sleepHours) ? "connected" : "connect") as ModuleData["status"],
-      value: isConnected(data?.sleepHours) ? String(data!.sleepHours) : undefined,
-      unit: "h",
-      sub: "Last night's sleep",
-    },
-    {
-      title: "Resting HR",
-      icon: "heart-outline" as const,
-      color: "#F87171",
-      status: (isConnected(data?.restingHeartRateBpm) ? "connected" : "connect") as ModuleData["status"],
-      value: isConnected(data?.restingHeartRateBpm) ? String(data!.restingHeartRateBpm) : undefined,
-      unit: "bpm",
-      sub: "Baseline cardiovascular",
-    },
-    {
-      title: "Steps",
-      icon: "footsteps-outline" as const,
-      color: "#34D399",
-      status: (isConnected(data?.steps) ? "connected" : "connect") as ModuleData["status"],
-      value: isConnected(data?.steps) ? data!.steps!.toLocaleString() : undefined,
-      sub: "Daily activity",
-    },
-    {
-      title: "Active kcal",
-      icon: "flame-outline" as const,
-      color: "#FB923C",
-      status: (isConnected(data?.activeCalories) ? "connected" : "connect") as ModuleData["status"],
-      value: isConnected(data?.activeCalories) ? String(data!.activeCalories) : undefined,
-      unit: "kcal",
-      sub: "Active calories burned",
-    },
-    {
-      title: "Blood Glucose",
-      icon: "analytics-outline",
-      color: "#FBBF24",
-      status: "coming_soon",
-      sub: "CGM integration · Phase 4",
-    },
-    {
-      title: "VO₂ Max",
-      icon: "fitness-outline",
-      color: "#38BDF8",
-      status: "coming_soon",
-      sub: "Cardiorespiratory · Phase 4",
-    },
-  ];
-}
-
-function ModuleTile({ mod }: { mod: ModuleData }) {
-  return (
-    <View style={styles.moduleTile}>
-      <View style={[styles.moduleIcon, { backgroundColor: mod.color + "18" }]}>
-        <Ionicons name={mod.icon} size={17} color={mod.color} />
-      </View>
-      <View style={styles.moduleBody}>
-        <Text style={styles.moduleTitle}>{mod.title}</Text>
-        {mod.status === "connected" && mod.value ? (
-          <Text style={[styles.moduleValue, { color: mod.color }]}>
-            {mod.value}{mod.unit ? ` ${mod.unit}` : ""}
-          </Text>
-        ) : (
-          <Text style={styles.moduleSub} numberOfLines={1}>{mod.sub}</Text>
-        )}
-      </View>
-      {mod.status === "connect" && (
-        <View style={styles.connectTag}>
-          <Text style={styles.connectTagLabel}>Connect</Text>
-        </View>
-      )}
-      {mod.status === "coming_soon" && (
-        <View style={styles.soonTag}>
-          <Text style={styles.soonTagLabel}>Phase 2</Text>
-        </View>
-      )}
-    </View>
-  );
-}
+// ─── Time filter labels ───────────────────────────────────────────────────────
+const TIME_FILTER_LABELS: Record<TimeFilter, string> = {
+  daily: "Daily",
+  weekly: "Weekly",
+  monthly: "Monthly",
+  "6months": "6 Months",
+  all: "All time",
+};
 
 // ─── Weekly chart ─────────────────────────────────────────────────────────────
 function WeeklyChart() {
@@ -232,78 +114,363 @@ function WeeklyChart() {
   );
 }
 
-// ─── Main screen ─────────────────────────────────────────────────────────────
+// ─── Diagnostics nav card ─────────────────────────────────────────────────────
+function DiagnosticNavCard({
+  icon,
+  title,
+  tier,
+  description,
+  href,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  tier: "pro" | "premium";
+  description: string;
+  href: "/diagnostics-genetics" | "/diagnostics-hair" | "/diagnostics-skin";
+}) {
+  const router = useRouter();
+  const tierColor = tier === "premium" ? "#A78BFA" : colors.accent;
+  return (
+    <TouchableOpacity activeOpacity={0.88} onPress={() => router.push(href)}>
+      <Card style={styles.comingSoonCard}>
+        <View style={styles.comingSoonRow}>
+          <View style={[styles.comingSoonIcon, { backgroundColor: tierColor + "15" }]}>
+            <Ionicons name={icon} size={20} color={tierColor} />
+          </View>
+          <View style={styles.comingSoonBody}>
+            <View style={styles.comingSoonTitleRow}>
+              <Text style={styles.comingSoonTitle}>{title}</Text>
+              <View style={[styles.tierBadge, { backgroundColor: tierColor + "20" }]}>
+                <Ionicons name="chevron-forward" size={12} color={tierColor} />
+                <Text style={[styles.tierBadgeLabel, { color: tierColor }]}>Open</Text>
+              </View>
+            </View>
+            <Text style={styles.comingSoonDesc}>{description}</Text>
+          </View>
+        </View>
+      </Card>
+    </TouchableOpacity>
+  );
+}
+
+// ─── Coming Soon Card ─────────────────────────────────────────────────────────
+function ComingSoonCard({
+  icon,
+  title,
+  tier,
+  description,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  tier: "pro" | "premium";
+  description: string;
+}) {
+  const tierColor = tier === "premium" ? "#A78BFA" : colors.accent;
+  return (
+    <Card style={styles.comingSoonCard}>
+      <View style={styles.comingSoonRow}>
+        <View style={[styles.comingSoonIcon, { backgroundColor: tierColor + "15" }]}>
+          <Ionicons name={icon} size={20} color={tierColor} />
+        </View>
+        <View style={styles.comingSoonBody}>
+          <View style={styles.comingSoonTitleRow}>
+            <Text style={styles.comingSoonTitle}>{title}</Text>
+            <View style={[styles.tierBadge, { backgroundColor: tierColor + "20" }]}>
+              <Ionicons name="lock-closed-outline" size={10} color={tierColor} />
+              <Text style={[styles.tierBadgeLabel, { color: tierColor }]}>
+                {tier === "premium" ? "Premium" : "Pro"}
+              </Text>
+            </View>
+          </View>
+          <Text style={styles.comingSoonDesc}>{description}</Text>
+        </View>
+        <View style={styles.soonPill}>
+          <Text style={styles.soonPillLabel}>Coming soon</Text>
+        </View>
+      </View>
+    </Card>
+  );
+}
+
+// ─── Time Filter Modal ────────────────────────────────────────────────────────
+function TimeFilterModal({
+  visible,
+  selected,
+  onSelect,
+  onClose,
+}: {
+  visible: boolean;
+  selected: TimeFilter;
+  onSelect: (f: TimeFilter) => void;
+  onClose: () => void;
+}) {
+  const filters: TimeFilter[] = ["daily", "weekly", "monthly", "6months", "all"];
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <TouchableOpacity style={styles.filterOverlay} activeOpacity={1} onPress={onClose} />
+      <View style={styles.filterSheet}>
+        <Text style={styles.filterTitle}>Time window</Text>
+        {filters.map((f) => (
+          <TouchableOpacity
+            key={f}
+            style={[styles.filterOption, f === selected && styles.filterOptionActive]}
+            onPress={() => { onSelect(f); onClose(); }}
+          >
+            <Text style={[styles.filterOptionLabel, f === selected && { color: colors.accent }]}>
+              {TIME_FILTER_LABELS[f]}
+            </Text>
+            {f === selected && <Ionicons name="checkmark" size={16} color={colors.accent} />}
+          </TouchableOpacity>
+        ))}
+      </View>
+    </Modal>
+  );
+}
+
+// ─── Main screen ──────────────────────────────────────────────────────────────
+type CardView = "aging" | "longevity";
+
 export default function DashboardScreen() {
+  const tabScrollPad = useFloatingTabBarScrollPadding();
+  const topBarHeight = useAppTopBarHeight();
   const router = useRouter();
   const { onboardingData } = useAppContext();
-  const { getTodayProgress } = useHabits();
   const { macroTargets, getDayTotals, isGoalSet } = useNutrition();
-  const { data: healthData, loading: healthLoading, available: healthAvailable, requestAndRead } = useHealthData();
-  const { completed, total } = getTodayProgress();
+
   const firstName = onboardingData?.name?.split(" ")[0] ?? "there";
-  const greeting = getGreeting();
-
-  const chronoAge = calcChronoAge(onboardingData?.dateOfBirth);
-  const bioAge = Math.max(10, chronoAge - 1.8);
-
+  const chronoAgeFromDob = calcChronoAge(onboardingData?.dateOfBirth);
   const foodTotals = getDayTotals();
-  const healthModules = buildHealthModules(healthData);
+
+  // Card view toggle — Performance is default per v1.2.0 wheel redesign.
+  const [cardView, setCardView] = useState<CardView>("longevity");
+  const [timeFilter, setTimeFilter] = useState<TimeFilter>("daily");
+  const [timeFilterVisible, setTimeFilterVisible] = useState(false);
+  const [lifeModalOpen, setLifeModalOpen] = useState(false);
+
+  // Live Elysia Age + Longevity data from Convex.
+  const longevity = useLongevityData(timeFilter);
+  const chronoAge = longevity.chronoAge ?? chronoAgeFromDob;
+  const bioAge = longevity.elysiaAge ?? Math.max(10, chronoAge - 1.8);
+  const calibrating = longevity.calibration?.status === "calibrating";
+
+  // Animated sliding pill for the segmented toggle
+  // Order on screen: [Performance | Trajectory] — Performance is the default
+  // and lives on the left.
+  const TOGGLE_OPTION_W = 92;
+  const toggleAnim = useRef(new Animated.Value(0)).current;
+  const handleSetView = (view: CardView) => {
+    setCardView(view);
+    Animated.spring(toggleAnim, {
+      toValue: view === "longevity" ? 0 : TOGGLE_OPTION_W,
+      useNativeDriver: true,
+      tension: 90,
+      friction: 14,
+    }).start();
+  };
+
+  // Today's date in a Bevel-style "Today, 26 May" format.
+  const today = new Date();
+  const todayLabel = today.toLocaleDateString(undefined, {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
+
+  // ─── Summary rings (Whoop trio) — drives both the in-flow expanded
+  // header and the sticky compact bar.
+  // We map onto the v1.2.0 wheel layers:
+  //   sleep    = recoverySleep   (sleep + autonomic recovery aggregate)
+  //   recovery = stressPsyche    (HRV / stress proxy)
+  //   strain   = movement        (activity / strain proxy)
+  // The composite is shown in the inner Longevity Battery further below.
+  const layers = (longevity.layerScores ?? {}) as Record<string, number | null | undefined>;
+  const summaryValues: SummaryRingValue[] = useMemo(
+    () => [
+      {
+        id: "sleep",
+        label: "Sleep",
+        value: layers.recoverySleep ?? null,
+      },
+      {
+        id: "recovery",
+        label: "Recovery",
+        value: layers.stressPsyche ?? longevity.composite ?? null,
+      },
+      {
+        id: "strain",
+        label: "Strain",
+        value: layers.movement ?? null,
+      },
+    ],
+    [layers.recoverySleep, layers.stressPsyche, layers.movement, longevity.composite]
+  );
+
+  const summaryContext = calibrating
+    ? `Calibrating · day ${longevity.calibration?.daysCalibrated ?? 0} of ${
+        longevity.calibration?.daysRequired ?? 14
+      }`
+    : firstSummaryLine(summaryValues);
+
+  const onRingPress = useCallback(
+    (_id: string) => {
+      // Future: route to the pillar's detail screen.
+    },
+    []
+  );
+
+  const { onScroll, header } = useStickyRingsHeader({
+    values: summaryValues,
+    topOffset: topBarHeight,
+    contextLine: summaryContext,
+    onPressRing: onRingPress,
+  });
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <ScrollView
-        contentContainerStyle={styles.content}
+    <View style={styles.safe}>
+      <RNAnimated.ScrollView
+        contentContainerStyle={[
+          styles.content,
+          { paddingTop: topBarHeight + spacing.xs, paddingBottom: tabScrollPad },
+        ]}
         showsVerticalScrollIndicator={false}
+        scrollEventThrottle={16}
+        onScroll={onScroll}
+        removeClippedSubviews
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.greeting}>{greeting},</Text>
-            <Text style={styles.name}>{firstName}</Text>
+        {/* Greeting + date header — sits below TopBar, above the rings. */}
+        <View style={styles.greetingRow}>
+          <View style={styles.greetingBlock}>
+            <Text style={styles.dateLabel}>{todayLabel}</Text>
+            <Text style={styles.greetingText}>
+              <Text style={styles.greetingDim}>Hi, </Text>
+              <Text style={styles.greetingStrong}>{firstName}</Text>
+            </Text>
           </View>
-          <TouchableOpacity style={styles.notifBtn}>
-            <Ionicons name="notifications-outline" size={20} color={colors.textSecondary} />
-          </TouchableOpacity>
         </View>
 
-        {/* ── Longevity Score + Aging Curve ────────────────── */}
+        {/* Whoop-style summary trio — collapses into the sticky header. */}
+        {header}
+
+        {/* ── Main Age Card (Aging Trajectory / Longevity Performance) ── */}
+      <View style={styles.sectionPad}>
         <Card variant="elevated" style={styles.ageCard}>
-          {/* Score row */}
-          <View style={styles.ageScoreRow}>
-            <View style={styles.ageScoreLeft}>
-              <Text style={styles.ageScoreLabel}>Biological Age</Text>
-              <Text style={styles.ageNumber}>{bioAge.toFixed(1)}</Text>
-              <Text style={styles.ageUnit}>years</Text>
+          {/* Card header: toggle + time filter */}
+          <View style={styles.cardTopRow}>
+            {/* Segmented toggle with sliding pill */}
+            <View style={styles.viewToggle}>
+              <Animated.View
+                style={[styles.toggleIndicator, { transform: [{ translateX: toggleAnim }] }]}
+              />
+              <TouchableOpacity onPress={() => handleSetView("longevity")} style={styles.toggleOption}>
+                <Text style={[styles.toggleOptionLabel, cardView === "longevity" && { color: colors.accent }]}>
+                  Performance
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => handleSetView("aging")} style={styles.toggleOption}>
+                <Text style={[styles.toggleOptionLabel, cardView === "aging" && { color: colors.accent }]}>
+                  Trajectory
+                </Text>
+              </TouchableOpacity>
             </View>
-            <View style={styles.ageScoreRight}>
-              <View style={styles.scoreRing}>
-                <Text style={styles.scoreValue}>{mockUserSummary.longevityScore}</Text>
-                <Text style={styles.scoreSubLabel}>score</Text>
+
+            {/* Time filter */}
+            <TouchableOpacity style={styles.timeFilterBtn} onPress={() => setTimeFilterVisible(true)}>
+              <Text style={styles.timeFilterLabel}>{TIME_FILTER_LABELS[timeFilter]}</Text>
+              <Ionicons name="chevron-down" size={12} color={colors.textTertiary} />
+            </TouchableOpacity>
+          </View>
+
+          {/* ── Aging Trajectory View (v1.2.0: Hourglass + factor scale + modal) ── */}
+          {cardView === "aging" && (
+            <View style={styles.trajectoryBlock}>
+              <View style={styles.hourglassWrap}>
+                <HourglassDnaAnimation
+                  elysiaAge={longevity.elysiaAge}
+                  delta={
+                    longevity.elysiaAge !== undefined && longevity.chronoAge !== undefined
+                      ? longevity.elysiaAge - longevity.chronoAge
+                      : undefined
+                  }
+                  calibrating={calibrating}
+                  calibrationLabel={
+                    longevity.calibration?.daysRequired
+                      ? `day ${longevity.calibration.daysCalibrated}/${longevity.calibration.daysRequired}`
+                      : undefined
+                  }
+                />
               </View>
-              <Text style={styles.scoreCaption}>Longevity{"\n"}Index</Text>
+
+              <AgingFactorScale velocity28d={longevity.velocity28d} />
+
+              <TouchableOpacity
+                activeOpacity={0.85}
+                style={styles.lifeTrajBtn}
+                onPress={() => setLifeModalOpen(true)}
+              >
+                <Ionicons name="trending-up-outline" size={16} color={colors.accent} />
+                <Text style={styles.lifeTrajLabel}>Life Trajectory</Text>
+                <Ionicons name="chevron-forward" size={14} color={colors.accent} />
+              </TouchableOpacity>
+
+              <View style={styles.ageStatsRow}>
+                <StatPill
+                  icon="person-outline"
+                  label="Chronological"
+                  value={`${chronoAge.toFixed(1)} yrs`}
+                  color={colors.textSecondary}
+                />
+                <StatPill
+                  icon="leaf-outline"
+                  label="Elysia"
+                  value={`${bioAge.toFixed(1)} yrs`}
+                  color={
+                    bioAge < chronoAge ? colors.success : bioAge > chronoAge ? colors.destructive : colors.textPrimary
+                  }
+                />
+              </View>
             </View>
-          </View>
+          )}
 
-          <View style={styles.ageMetaRow}>
-            <StatPill icon="person-outline" label="Chronological" value={`${chronoAge.toFixed(1)} yrs`} color={colors.textSecondary} />
-            <StatPill icon="trending-down-outline" label="Biological" value={`${bioAge.toFixed(1)} yrs`} color={colors.success} />
-          </View>
-
-          <Text style={styles.chartTitle}>Aging Trajectory</Text>
-          <Text style={styles.chartSub}>
-            Below the dashed line = biologically younger · Cyan dot = you today
-          </Text>
-
-          <AgingCurveChart
-            chronoAge={chronoAge}
-            bioAge={bioAge}
-            history={MOCK_AGING_HISTORY}
-            lifeExpectancy={85}
-          />
+          {/* ── Longevity Performance View ── */}
+          {cardView === "longevity" && (
+            <LongevityPerformanceView
+              elysiaAge={bioAge}
+              contributions={longevity.contributions}
+              lockedPillars={LOCKED_PILLARS}
+              timeFilter={timeFilter}
+              calibrationDaysCompleted={longevity.calibration?.daysCalibrated}
+              calibrationDaysRequired={longevity.calibration?.daysRequired}
+              layerScores={longevity.layerScores as Record<string, number | null> | undefined}
+              pillarScores={longevity.pillarScores as Record<string, number | null> | undefined}
+              composite={longevity.composite}
+              healthspanCreditsToday={longevity.healthspanCreditsToday}
+              trajectoryStatus={longevity.trajectoryStatus}
+            />
+          )}
         </Card>
+      </View>
+
+        {/* Time filter modal */}
+        <TimeFilterModal
+          visible={timeFilterVisible}
+          selected={timeFilter}
+          onSelect={setTimeFilter}
+          onClose={() => setTimeFilterVisible(false)}
+        />
+
+        {/* Life Trajectory modal */}
+        <LifeTrajectoryModal
+          visible={lifeModalOpen}
+          onClose={() => setLifeModalOpen(false)}
+          history={longevity.trajectoryHistory}
+          chronoAge={longevity.chronoAge ?? chronoAge}
+          elysiaAge={longevity.elysiaAge ?? bioAge}
+          velocity28d={longevity.velocity28d}
+          sex={"male"}
+        />
 
         {/* ── Nutrition Summary ─────────────────────────────── */}
-        <TouchableOpacity activeOpacity={0.9} onPress={() => router.push("/(tabs)/tracker")}>
+        <TouchableOpacity activeOpacity={0.9} onPress={() => router.push("/(tabs)/tracker")} style={styles.sectionPad}>
           <Card style={styles.nutritionCard}>
             <View style={styles.nutritionHeader}>
               <View style={styles.nutritionHeaderLeft}>
@@ -350,87 +517,143 @@ export default function DashboardScreen() {
           </Card>
         </TouchableOpacity>
 
-        {/* ── Health Modules ─────────────────────────────────── */}
-        <View>
-          <SectionHeader
-            title="Health data"
-            subtitle={
-              healthData
-                ? `Updated ${new Date(healthData.lastUpdated ?? "").toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
-                : healthAvailable
-                ? "Reading device health…"
-                : "Connect a wearable or device"
-            }
-            action={{ label: "Manage", onPress: () => router.push("/(tabs)/settings") }}
-            paddingHorizontal={0}
-          />
-
-          {/* Connect device prompt (EAS build required) */}
-          {!healthAvailable && (
-            <View style={styles.connectPrompt}>
-              <Ionicons name="watch-outline" size={20} color={colors.textTertiary} />
-              <Text style={styles.connectPromptText}>
-                Health data requires an EAS development build.{"\n"}
-                Apple Health and Google Health Connect will activate automatically.
-              </Text>
-            </View>
-          )}
-
-          {/* Loading spinner */}
-          {healthAvailable && healthLoading && (
-            <View style={styles.healthLoading}>
-              <ActivityIndicator color={colors.accent} size="small" />
-              <Text style={styles.healthLoadingText}>Reading health data…</Text>
-            </View>
-          )}
-
-          <Card padded={false} style={styles.modulesCard}>
-            {healthModules.map((mod, i) => (
-              <React.Fragment key={mod.title}>
-                <ModuleTile mod={mod} />
-                {i < healthModules.length - 1 && <View style={styles.modDivider} />}
-              </React.Fragment>
-            ))}
-          </Card>
+        {/* ── Performance Circles ───────────────────────────── */}
+        <View style={styles.sectionPad}>
+          <SectionHeader title="Daily overview" subtitle="Tap a circle for details" />
+          <Card><PerformanceCircles /></Card>
         </View>
 
-        {/* ── Weekly habit trend ───────────────────────────── */}
-        <View>
-          <SectionHeader title="This week" subtitle="Habit completion rate" paddingHorizontal={0} />
+        {/* ── AI Insights Feed (Phase 5) ──────────────────────── */}
+        <View style={styles.sectionPad}>
+          <SectionHeader
+            title="Insights"
+            subtitle="AI-generated, refreshed nightly"
+          />
+          <InsightsFeed />
+        </View>
+
+        {/* ── Energy Balance (Phase 4) ────────────────────────── */}
+        <View style={styles.sectionPad}>
+          <SectionHeader
+            title="Energy & analytics"
+            subtitle="Calories in vs out, balance, recovery"
+          />
+          <EnergyBalanceCard />
+        </View>
+
+        {/* ── Health Modules ─────────────────────────────────── */}
+        <HealthDataGrid />
+
+        {/* ── Coming Soon Sections ───────────────────────────── */}
+        <View style={[styles.comingSoonSection, styles.sectionPad]}>
+          <SectionHeader title="Advanced analytics" subtitle="Unlock deeper insights" />
+          <ComingSoonCard
+            icon="body-outline"
+            title="Body Analysis"
+            tier="pro"
+            description="Advanced body composition, metabolic rate, and physique tracking."
+          />
+          <ComingSoonCard
+            icon="git-network-outline"
+            title="Genetics Analysis"
+            tier="premium"
+            description="Personalized longevity insights from your genetic profile."
+          />
+          <ComingSoonCard
+            icon="scan-outline"
+            title="Skin Analysis"
+            tier="premium"
+            description="AI-powered skin age assessment and photoaging tracking."
+          />
+        </View>
+
+        {/* ── Weekly habit trend ────────────────────────────── */}
+        <View style={styles.sectionPad}>
+          <SectionHeader title="This week" subtitle="Habit completion rate" />
           <Card><WeeklyChart /></Card>
         </View>
-      </ScrollView>
-    </SafeAreaView>
+      </RNAnimated.ScrollView>
+    </View>
   );
+}
+
+/** Pick a one-liner summary from the three ring values. */
+function firstSummaryLine(values: SummaryRingValue[]): string {
+  const recovery = values.find((v) => v.id === "recovery")?.value;
+  if (recovery == null) return "We're still gathering today's data.";
+  if (recovery >= 80) return "Strong recovery — push the day.";
+  if (recovery >= 60) return "Solid recovery. Train moderate.";
+  if (recovery >= 40) return "Moderate recovery. Keep it light today.";
+  return "Low recovery. Prioritise sleep and nutrition.";
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.lg, gap: spacing.xl, paddingBottom: 110 },
-  header: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", paddingTop: spacing.sm },
-  greeting: { fontSize: 13, color: colors.textTertiary, fontWeight: "500" },
-  name: { fontSize: 26, fontWeight: "800", color: colors.textPrimary, letterSpacing: -0.5, marginTop: 2 },
-  notifBtn: { width: 36, height: 36, borderRadius: radii.md, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center" },
+  safe: { flex: 1, backgroundColor: surface.base },
+  content: {
+    paddingHorizontal: 0,
+    gap: spacing.xl,
+  },
+
+  // Greeting row (below the global TopBar)
+  greetingRow: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+  },
+  greetingBlock: { gap: 2 },
+  dateLabel: {
+    ...typography.eyebrow,
+    color: text.tertiary,
+  },
+  greetingText: {
+    ...typography.title1,
+    fontSize: 24,
+  },
+  greetingDim: { color: text.secondary },
+  greetingStrong: { color: text.primary },
+
+  // Horizontal inset that all "card sections" use so cards sit inset from
+  // the screen edges (Whoop / Bevel feel) instead of going edge-to-edge.
+  sectionPad: { paddingHorizontal: spacing.lg },
+
   // Age card
   ageCard: { gap: spacing.lg },
-  ageScoreRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" },
-  ageScoreLeft: { gap: 2 },
-  ageScoreLabel: { fontSize: 12, fontWeight: "600", color: colors.textTertiary, textTransform: "uppercase", letterSpacing: 0.5 },
-  ageNumber: { fontSize: 64, fontWeight: "800", color: colors.accent, letterSpacing: -3, lineHeight: 68 },
-  ageUnit: { fontSize: 14, color: colors.textSecondary, fontWeight: "500", marginTop: -4 },
-  ageScoreRight: { alignItems: "center", gap: 6 },
-  scoreRing: { width: 72, height: 72, borderRadius: 36, borderWidth: 2.5, borderColor: colors.success, alignItems: "center", justifyContent: "center" },
-  scoreValue: { fontSize: 26, fontWeight: "800", color: colors.success },
-  scoreSubLabel: { fontSize: 9, color: colors.textTertiary, textTransform: "uppercase", letterSpacing: 0.3 },
-  scoreCaption: { fontSize: 11, color: colors.textTertiary, textAlign: "center", lineHeight: 15 },
-  ageMetaRow: { flexDirection: "row", gap: spacing.sm },
+  cardTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+
+  // Segmented toggle
+  viewToggle: { flexDirection: "row", backgroundColor: colors.surface, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border, padding: 2, position: "relative", overflow: "hidden" },
+  toggleIndicator: { position: "absolute", top: 2, left: 2, bottom: 2, width: 92, backgroundColor: colors.card, borderRadius: radii.sm - 1, zIndex: 0 },
+  toggleOption: { width: 92, paddingVertical: spacing.xs, alignItems: "center", borderRadius: radii.sm - 1, zIndex: 1 },
+  toggleOptionActive: {},
+  toggleOptionLabel: { fontSize: 12, fontWeight: "600", color: colors.textTertiary },
+
+  // Time filter
+  timeFilterBtn: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: colors.surface, borderRadius: radii.sm, borderWidth: 1, borderColor: colors.border, paddingHorizontal: spacing.sm + 2, paddingVertical: spacing.xs },
+  timeFilterLabel: { fontSize: 11, fontWeight: "600", color: colors.textTertiary },
+
+  // Trajectory block (v1.2.0)
+  trajectoryBlock: { gap: spacing.md, alignItems: "stretch" },
+  hourglassWrap: { alignItems: "center", paddingVertical: spacing.xs },
+  lifeTrajBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: spacing.sm + 2,
+    backgroundColor: colors.accent + "18",
+    borderRadius: radii.full,
+    borderWidth: 1,
+    borderColor: colors.accent + "40",
+  },
+  lifeTrajLabel: { fontSize: 13, fontWeight: "700", color: colors.accent, letterSpacing: 0.2 },
+  ageStatsRow: { flexDirection: "row", gap: spacing.sm },
   statPill: { flex: 1, flexDirection: "row", alignItems: "center", gap: 7, borderRadius: radii.md, borderWidth: 1, padding: spacing.sm + 2 },
-  statPillText: {},
   statPillValue: { fontSize: 13, fontWeight: "700" },
   statPillLabel: { fontSize: 10, color: colors.textTertiary, marginTop: 1 },
-  chartTitle: { fontSize: 13, fontWeight: "700", color: colors.textPrimary },
-  chartSub: { fontSize: 11, color: colors.textTertiary, lineHeight: 16 },
   // Nutrition
   nutritionCard: { gap: spacing.md },
   nutritionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
@@ -443,28 +666,48 @@ const styles = StyleSheet.create({
   nutritionUnit: { fontSize: 11, color: colors.textTertiary, marginTop: 2 },
   nutritionDivider: { width: 1, height: 36, backgroundColor: colors.border },
   nutritionSetupHint: { fontSize: 13, color: colors.textTertiary, textAlign: "center", paddingVertical: spacing.sm },
-  // Health connect prompt
-  connectPrompt: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm, backgroundColor: colors.card, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border, borderStyle: "dashed", padding: spacing.md },
-  connectPromptText: { flex: 1, fontSize: 12, color: colors.textSecondary, lineHeight: 18 },
-  healthLoading: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.sm },
-  healthLoadingText: { fontSize: 12, color: colors.textTertiary },
-  // Modules
-  modulesCard: {},
-  moduleTile: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.md + 2 },
-  moduleIcon: { width: 38, height: 38, borderRadius: radii.md, alignItems: "center", justifyContent: "center" },
-  moduleBody: { flex: 1, gap: 2 },
-  moduleTitle: { fontSize: 14, fontWeight: "600", color: colors.textPrimary },
-  moduleValue: { fontSize: 18, fontWeight: "800", letterSpacing: -0.3 },
-  moduleSub: { fontSize: 12, color: colors.textTertiary },
-  connectTag: { backgroundColor: colors.accentMuted, borderRadius: radii.full, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: colors.accent + "40" },
-  connectTagLabel: { fontSize: 11, fontWeight: "700", color: colors.accent },
-  soonTag: { backgroundColor: colors.surface, borderRadius: radii.full, paddingHorizontal: 10, paddingVertical: 4 },
-  soonTagLabel: { fontSize: 11, fontWeight: "600", color: colors.textTertiary },
-  modDivider: { height: 1, backgroundColor: colors.border, marginHorizontal: spacing.lg },
+
+  // Coming soon
+  comingSoonSection: { gap: spacing.md },
+  comingSoonCard: { gap: 0 },
+  comingSoonRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  comingSoonIcon: { width: 44, height: 44, borderRadius: radii.md, alignItems: "center", justifyContent: "center", flexShrink: 0 },
+  comingSoonBody: { flex: 1, gap: 3 },
+  comingSoonTitleRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  comingSoonTitle: { fontSize: 14, fontWeight: "700", color: colors.textPrimary },
+  tierBadge: { flexDirection: "row", alignItems: "center", gap: 3, borderRadius: radii.full, paddingHorizontal: 7, paddingVertical: 2 },
+  tierBadgeLabel: { fontSize: 10, fontWeight: "700" },
+  comingSoonDesc: { fontSize: 12, color: colors.textSecondary, lineHeight: 17 },
+  soonPill: { backgroundColor: colors.surface, borderRadius: radii.full, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: colors.border },
+  soonPillLabel: { fontSize: 10, fontWeight: "600", color: colors.textTertiary },
+
   // Chart
   chart: { flexDirection: "row", alignItems: "flex-end", height: 80, gap: spacing.xs },
   chartCol: { flex: 1, alignItems: "center", gap: 5, height: "100%" },
   chartBarWrap: { flex: 1, justifyContent: "flex-end", width: "100%" },
   chartBar: { width: "100%", borderRadius: radii.sm },
   chartDay: { fontSize: 10, fontWeight: "600", color: colors.textTertiary },
+
+  // Time filter modal
+  filterOverlay: { flex: 1, backgroundColor: colors.overlay },
+  filterSheet: {
+    position: "absolute",
+    top: "35%",
+    right: spacing.lg,
+    backgroundColor: colors.card,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    minWidth: 160,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  filterTitle: { fontSize: 12, fontWeight: "700", color: colors.textTertiary, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: spacing.sm, paddingHorizontal: spacing.sm },
+  filterOption: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: spacing.sm, paddingHorizontal: spacing.sm, borderRadius: radii.sm },
+  filterOptionActive: { backgroundColor: colors.surface },
+  filterOptionLabel: { fontSize: 14, color: colors.textPrimary },
 });

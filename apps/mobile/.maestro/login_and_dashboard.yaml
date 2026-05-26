@@ -1,0 +1,21 @@
+appId: com.elysia.app
+name: Login then dashboard renders
+---
+- launchApp:
+    clearState: true
+- assertVisible: ".*Welcome.*|.*Sign in.*"
+- tapOn: "Email"
+- inputText: "test+e2e@example.com"
+- tapOn: "Password"
+- inputText: "ElysiaTest123!"
+- tapOn: "Sign in"
+- assertVisible:
+    text: "Tracker"
+    timeout: 15000
+- tapOn: "Dashboard"
+- assertVisible:
+    text: "Daily overview"
+    timeout: 8000
+- assertVisible:
+    text: "Energy & analytics"
+    timeout: 8000

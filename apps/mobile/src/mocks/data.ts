@@ -400,6 +400,215 @@ export const mockTemplates: ProtocolTemplate[] = [
     linkedCatalogItemIds: [],
     isPublished: true,
   },
+  // ─── Additional templates ──────────────────────────────────────────────────
+  {
+    templateId: "e1f2a3b4-c5d6-7890-efab-901234567890",
+    slug: "sleep-wind-down-protocol",
+    title: "Sleep Wind-Down Protocol",
+    shortExplanation: "90-minute pre-sleep routine: dim lights, no screens, light stretch, and bedroom cooling to 18–20°C.",
+    expectedBenefit: "Faster sleep onset, increased deep sleep percentage, and improved next-day cognitive performance.",
+    category: "sleep",
+    evidenceRationale:
+      "Core body temperature must drop 1–2°C to initiate sleep. Room cooling accelerates this. Blue light suppresses melatonin by up to 50% for 3h post-exposure.",
+    references: [
+      {
+        title: "Effects of bedroom temperature on sleep quality (Journal of Physiological Anthropology)",
+        sourceType: "study",
+        publicationYear: 2019,
+        url: "https://doi.org/10.1186/s40101-019-0190-7",
+      },
+    ],
+    defaultSchedule: {
+      frequencyPerWeek: 7,
+      targetTimesOfDay: ["evening"],
+      startsOn: "2026-03-18",
+    },
+    premiumTierRequired: "free",
+    linkedCatalogItemIds: [],
+    isPublished: true,
+  },
+  {
+    templateId: "f2a3b4c5-d6e7-8901-fabc-012345678901",
+    slug: "zone-2-cardio-protocol",
+    title: "Zone 2 Cardio Protocol",
+    shortExplanation: "3–4 sessions per week of 45–60 min at conversational pace (60–70% max HR).",
+    expectedBenefit: "Mitochondrial biogenesis, improved fat oxidation, and sustained aerobic base for longevity.",
+    category: "training",
+    evidenceRationale:
+      "Zone 2 exercise maximizes mitochondrial density adaptations and improves metabolic flexibility — the metabolic hallmarks most predictive of long-term healthspan.",
+    references: [
+      {
+        title: "Zone 2 training and mitochondrial health (Cell Metabolism)",
+        sourceType: "review",
+        publicationYear: 2023,
+        url: "https://doi.org/10.1016/j.cmet.2023.02.010",
+      },
+    ],
+    defaultSchedule: {
+      frequencyPerWeek: 4,
+      targetTimesOfDay: ["morning", "afternoon"],
+      startsOn: "2026-03-18",
+    },
+    premiumTierRequired: "free",
+    linkedCatalogItemIds: [],
+    isPublished: true,
+  },
+  {
+    templateId: "a3b4c5d6-e7f8-9012-abcd-123456789012",
+    slug: "time-restricted-eating-16-8",
+    title: "Time-Restricted Eating (16:8)",
+    shortExplanation: "Compress all meals into an 8-hour window (e.g. 12 pm–8 pm), fasting for 16 hours overnight.",
+    expectedBenefit: "Improved metabolic flexibility, autophagy induction, and stable energy levels without caloric restriction.",
+    category: "nutrition",
+    evidenceRationale:
+      "Time-restricted feeding aligned to daylight hours improves insulin sensitivity, reduces triglycerides, and upregulates autophagy without requiring caloric reduction.",
+    references: [
+      {
+        title: "Time-restricted eating and metabolic outcomes (Cell Metabolism)",
+        sourceType: "study",
+        publicationYear: 2020,
+        url: "https://doi.org/10.1016/j.cmet.2020.01.011",
+      },
+    ],
+    defaultSchedule: {
+      frequencyPerWeek: 7,
+      targetTimesOfDay: ["midday", "evening"],
+      startsOn: "2026-03-18",
+    },
+    premiumTierRequired: "free",
+    linkedCatalogItemIds: [],
+    isPublished: true,
+  },
+  {
+    templateId: "b4c5d6e7-f8a9-0123-bcde-234567890123",
+    slug: "vitamin-d3-k2-protocol",
+    title: "Vitamin D3 + K2 Daily Supplementation",
+    shortExplanation: "2,000–5,000 IU Vitamin D3 with 100–200mcg MK-7 K2, taken with a fatty meal.",
+    expectedBenefit: "Optimized bone mineral density, immune modulation, and cardiovascular protection.",
+    category: "supplementation",
+    evidenceRationale:
+      "Over 40% of Europeans are Vitamin D deficient in winter. K2 directs calcium to bone (not arterial walls), making the D3/K2 combination safer and synergistic.",
+    references: [
+      {
+        title: "Vitamin D and K2 synergism in bone health (Nutrients)",
+        sourceType: "review",
+        publicationYear: 2020,
+        url: "https://doi.org/10.3390/nu12010035",
+      },
+    ],
+    defaultSchedule: {
+      frequencyPerWeek: 7,
+      targetTimesOfDay: ["morning"],
+      startsOn: "2026-03-18",
+    },
+    premiumTierRequired: "free",
+    linkedCatalogItemIds: [],
+    isPublished: true,
+  },
+  {
+    templateId: "c5d6e7f8-a9b0-1234-cdef-345678901234",
+    slug: "ice-bath-cold-immersion",
+    title: "Ice Bath Cold Immersion Protocol",
+    shortExplanation: "10–15 min cold water immersion at 10–14°C, 2–3 times per week, ideally in the morning.",
+    expectedBenefit: "Maximal norepinephrine response, accelerated muscle recovery, and cold adaptation.",
+    category: "cold_exposure",
+    evidenceRationale:
+      "Full immersion protocols produce stronger neuroendocrine responses than showers, including a 200–400% norepinephrine spike that sustains alertness and improves mood for 3–4 hours.",
+    references: [
+      {
+        title: "Cold water immersion and neurotransmitter response (Biological Psychiatry)",
+        sourceType: "study",
+        publicationYear: 2007,
+        url: "https://doi.org/10.1016/j.biopsych.2007.09.010",
+      },
+    ],
+    defaultSchedule: {
+      frequencyPerWeek: 3,
+      targetTimesOfDay: ["morning"],
+      startsOn: "2026-03-18",
+    },
+    premiumTierRequired: "pro",
+    linkedCatalogItemIds: [],
+    isPublished: true,
+  },
+  {
+    templateId: "d6e7f8a9-b0c1-2345-defa-456789012345",
+    slug: "gratitude-journaling",
+    title: "Gratitude Journaling Practice",
+    shortExplanation: "Write 3 specific, novel gratitude entries each evening — 5–10 minutes.",
+    expectedBenefit: "Reduced rumination, improved sleep quality, and measurable improvements in subjective wellbeing.",
+    category: "meditation",
+    evidenceRationale:
+      "Gratitude practices reduce activation in the default mode network (the 'worry circuit') and increase GABA/serotonin activity, translating to improved sleep and emotional regulation.",
+    references: [
+      {
+        title: "Gratitude intervention and wellbeing outcomes (Journal of Positive Psychology)",
+        sourceType: "meta_analysis",
+        publicationYear: 2021,
+        url: "https://doi.org/10.1080/17439760.2020.1818807",
+      },
+    ],
+    defaultSchedule: {
+      frequencyPerWeek: 7,
+      targetTimesOfDay: ["evening"],
+      startsOn: "2026-03-18",
+    },
+    premiumTierRequired: "free",
+    linkedCatalogItemIds: [],
+    isPublished: true,
+  },
+  {
+    templateId: "e7f8a9b0-c1d2-3456-efab-567890123456",
+    slug: "evening-review-ritual",
+    title: "Evening Review & Shutdown Ritual",
+    shortExplanation: "5-min structured wind-down: complete open loops, write tomorrow's top 3 priorities, and close all work apps.",
+    expectedBenefit: "Reduced cognitive overload at sleep, lower nocturnal cortisol, and improved next-day intentionality.",
+    category: "productivity",
+    evidenceRationale:
+      "Unfinished tasks stay active in working memory (Zeigarnik effect) until 'offloaded' to a trusted system — a brief shutdown ritual terminates this memory loop and enables true rest.",
+    references: [
+      {
+        title: "Task completion and cognitive off-loading (Psychological Science)",
+        sourceType: "study",
+        publicationYear: 2011,
+        url: "https://doi.org/10.1177/0956797611418610",
+      },
+    ],
+    defaultSchedule: {
+      frequencyPerWeek: 5,
+      targetTimesOfDay: ["evening"],
+      startsOn: "2026-03-18",
+    },
+    premiumTierRequired: "free",
+    linkedCatalogItemIds: [],
+    isPublished: true,
+  },
+  {
+    templateId: "f8a9b0c1-d2e3-4567-fabc-678901234567",
+    slug: "retinol-collagen-skincare",
+    title: "Retinol + Collagen Skincare Protocol",
+    shortExplanation: "Nightly retinol (0.025–0.1%) application and daily oral collagen peptides (10–15g) with Vitamin C.",
+    expectedBenefit: "Measurable reduction in fine lines, improved skin density, and photoaging reversal over 12 weeks.",
+    category: "skincare",
+    evidenceRationale:
+      "Retinol is the only topical ingredient with FDA-recognized anti-aging evidence. Oral collagen peptides increase dermal collagen synthesis — effect enhanced by concurrent Vitamin C co-factor.",
+    references: [
+      {
+        title: "Retinol and photoaging reversal (Journal of Cosmetic Dermatology)",
+        sourceType: "study",
+        publicationYear: 2017,
+        url: "https://doi.org/10.1111/jocd.12356",
+      },
+    ],
+    defaultSchedule: {
+      frequencyPerWeek: 7,
+      targetTimesOfDay: ["evening"],
+      startsOn: "2026-03-18",
+    },
+    premiumTierRequired: "pro",
+    linkedCatalogItemIds: [],
+    isPublished: true,
+  },
 ];
 
 export const mockHabits: UserHabit[] = [

@@ -5,15 +5,13 @@ import React, {
   useCallback,
   type ReactNode,
 } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import type { UserHabit, ProtocolTemplate, HabitState } from "@elysia/domain";
-import { supabase } from "@/lib/supabase";
+import { useQuery, useMutation } from "convex/react";
+import { api } from "@convex/_generated/api";
+import type { Id } from "@convex/_generated/dataModel";
+import type { ProtocolTemplate, HabitState } from "@elysia/domain";
 import { useAuth } from "@/context/AuthContext";
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
 const todayISO = () => new Date().toISOString().split("T")[0]!;
-const nowISO = () => new Date().toISOString();
 
 const reminderTimeForSlot: Record<string, string> = {
   morning: "07:30",
@@ -22,32 +20,82 @@ const reminderTimeForSlot: Record<string, string> = {
   evening: "19:30",
 };
 
-function mapRowToHabit(row: Record<string, unknown>): UserHabit {
+interface HabitDoc {
+  _id: Id<"habits">;
+  _creationTime: number;
+  userId: string;
+  templateId?: string;
+  title: string;
+  category: string;
+  expectedBenefit: string;
+  state: string;
+  schedule: {
+    frequencyPerWeek: number;
+    targetTimesOfDay: string[];
+    startsOn: string;
+    endsOn?: string;
+  };
+  reminderRule?: {
+    reminderTimeLocal: string;
+    timezone: string;
+    pushEnabled: boolean;
+  };
+  streakCount: number;
+  completionRate30d: number;
+  updatedAt?: string;
+}
+
+interface MappedHabit {
+  habitId: string;
+  _id: Id<"habits">;
+  userId: string;
+  templateId?: string;
+  title: string;
+  category: string;
+  expectedBenefit: string;
+  state: HabitState;
+  schedule: {
+    frequencyPerWeek: number;
+    targetTimesOfDay: string[];
+    startsOn: string;
+    endsOn?: string;
+  };
+  reminderRule: {
+    reminderTimeLocal: string;
+    timezone: string;
+    pushEnabled: boolean;
+  };
+  streakCount: number;
+  completionRate30d: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function mapHabit(h: HabitDoc): MappedHabit {
   return {
-    habitId: row.id as string,
-    userId: row.user_id as string,
-    templateId: (row.template_id as string | null) ?? undefined,
-    title: row.title as string,
-    category: row.category as string,
-    expectedBenefit: (row.expected_benefit as string) ?? "",
-    state: row.state as HabitState,
-    schedule: row.schedule as UserHabit["schedule"],
-    reminderRule: (row.reminder_rule as UserHabit["reminderRule"]) ?? {
+    habitId: h._id,
+    _id: h._id,
+    userId: h.userId,
+    templateId: h.templateId,
+    title: h.title,
+    category: h.category,
+    expectedBenefit: h.expectedBenefit,
+    state: h.state as HabitState,
+    schedule: h.schedule,
+    reminderRule: h.reminderRule ?? {
       reminderTimeLocal: "08:00",
       timezone: "UTC",
       pushEnabled: false,
     },
-    streakCount: (row.streak_count as number) ?? 0,
-    completionRate30d: (row.completion_rate_30d as number) ?? 0,
-    createdAt: row.created_at as string,
-    updatedAt: row.updated_at as string,
+    streakCount: h.streakCount,
+    completionRate30d: h.completionRate30d,
+    createdAt: new Date(h._creationTime).toISOString(),
+    updatedAt: h.updatedAt ?? new Date(h._creationTime).toISOString(),
   };
 }
 
-// ─── Context types ────────────────────────────────────────────────────────────
-
 interface HabitsContextValue {
-  habits: UserHabit[];
+  habits: MappedHabit[];
   completedTodayIds: Set<string>;
   isLoading: boolean;
   addHabitFromTemplate: (
@@ -62,169 +110,38 @@ interface HabitsContextValue {
   addSupplementHabit: (title: string, category: string, productId: string) => void;
   isProductTracked: (productId: string) => boolean;
   addCustomHabit: (title: string, category: string, state: "active" | "planned") => void;
-  getActiveHabits: () => UserHabit[];
+  getActiveHabits: () => MappedHabit[];
   getTodayProgress: () => { completed: number; total: number };
 }
 
 const HabitsContext = createContext<HabitsContextValue | null>(null);
 
-// ─── Provider ─────────────────────────────────────────────────────────────────
-
 export function HabitsProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  const qc = useQueryClient();
   const today = todayISO();
 
-  // ── Queries ──────────────────────────────────────────────────────────────
+  const rawHabits = useQuery(api.habits.listHabits, user ? {} : "skip");
+  const rawCompletions = useQuery(
+    api.habits.getTodayCompletions,
+    user ? { date: today } : "skip"
+  );
 
-  const { data: habits = [], isLoading: habitsLoading } = useQuery({
-    queryKey: ["habits", user?.id],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("habits")
-        .select("*")
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      return (data ?? []).map(mapRowToHabit);
-    },
-    enabled: !!user,
-  });
+  const insertHabitMut = useMutation(api.habits.insertHabit);
+  const toggleCompletionMut = useMutation(api.habits.toggleCompletion);
+  const updateStateMut = useMutation(api.habits.updateHabitState);
+  const removeHabitMut = useMutation(api.habits.removeHabit);
 
-  const { data: completedIds = [], isLoading: completionsLoading } = useQuery({
-    queryKey: ["habit_completions", user?.id, today],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("habit_completions")
-        .select("habit_id")
-        .eq("completed_date", today);
-      if (error) throw error;
-      return (data ?? []).map((c) => c.habit_id as string);
-    },
-    enabled: !!user,
-  });
+  const habits = useMemo(
+    () => (rawHabits ?? []).map(mapHabit),
+    [rawHabits]
+  );
 
-  const completedTodayIds = useMemo(() => new Set(completedIds), [completedIds]);
+  const completedTodayIds = useMemo((): Set<string> => {
+    const ids = rawCompletions ?? [];
+    return new Set(ids.map((id) => String(id)));
+  }, [rawCompletions]);
 
-  // ── Mutations ────────────────────────────────────────────────────────────
-
-  const insertHabitMutation = useMutation({
-    mutationFn: async (
-      habit: Omit<UserHabit, "habitId" | "streakCount" | "completionRate30d" | "createdAt" | "updatedAt">
-    ) => {
-      const { data, error } = await supabase
-        .from("habits")
-        .insert({
-          user_id: user!.id,
-          template_id: habit.templateId ?? null,
-          title: habit.title,
-          category: habit.category,
-          expected_benefit: habit.expectedBenefit,
-          state: habit.state,
-          schedule: habit.schedule,
-          reminder_rule: habit.reminderRule,
-          streak_count: 0,
-          completion_rate_30d: 0,
-        })
-        .select()
-        .single();
-      if (error) throw error;
-      return mapRowToHabit(data);
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["habits", user?.id] });
-    },
-  });
-
-  const completeTodayMutation = useMutation({
-    mutationFn: async (habitId: string) => {
-      const isCompleted = completedTodayIds.has(habitId);
-      if (isCompleted) {
-        const { error } = await supabase
-          .from("habit_completions")
-          .delete()
-          .eq("habit_id", habitId)
-          .eq("completed_date", today);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from("habit_completions").insert({
-          habit_id: habitId,
-          user_id: user!.id,
-          completed_date: today,
-        });
-        if (error) throw error;
-      }
-    },
-    onMutate: async (habitId) => {
-      await qc.cancelQueries({ queryKey: ["habit_completions", user?.id, today] });
-      const prev = qc.getQueryData<string[]>(["habit_completions", user?.id, today]);
-      const isCompleted = (prev ?? []).includes(habitId);
-      qc.setQueryData<string[]>(
-        ["habit_completions", user?.id, today],
-        isCompleted
-          ? (prev ?? []).filter((id) => id !== habitId)
-          : [...(prev ?? []), habitId]
-      );
-      return { prev };
-    },
-    onError: (_err, _habitId, context) => {
-      if (context?.prev !== undefined) {
-        qc.setQueryData(["habit_completions", user?.id, today], context.prev);
-      }
-    },
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: ["habit_completions", user?.id, today] });
-    },
-  });
-
-  const updateStateMutation = useMutation({
-    mutationFn: async ({ habitId, state }: { habitId: string; state: HabitState }) => {
-      const { error } = await supabase
-        .from("habits")
-        .update({ state, updated_at: nowISO() })
-        .eq("id", habitId)
-        .eq("user_id", user!.id);
-      if (error) throw error;
-    },
-    onMutate: async ({ habitId, state }) => {
-      await qc.cancelQueries({ queryKey: ["habits", user?.id] });
-      const prev = qc.getQueryData<UserHabit[]>(["habits", user?.id]);
-      qc.setQueryData<UserHabit[]>(
-        ["habits", user?.id],
-        (old = []) => old.map((h) => (h.habitId === habitId ? { ...h, state } : h))
-      );
-      return { prev };
-    },
-    onError: (_err, _vars, context) => {
-      if (context?.prev) qc.setQueryData(["habits", user?.id], context.prev);
-    },
-    onSettled: () => qc.invalidateQueries({ queryKey: ["habits", user?.id] }),
-  });
-
-  const removeHabitMutation = useMutation({
-    mutationFn: async (habitId: string) => {
-      const { error } = await supabase
-        .from("habits")
-        .delete()
-        .eq("id", habitId)
-        .eq("user_id", user!.id);
-      if (error) throw error;
-    },
-    onMutate: async (habitId) => {
-      await qc.cancelQueries({ queryKey: ["habits", user?.id] });
-      const prev = qc.getQueryData<UserHabit[]>(["habits", user?.id]);
-      qc.setQueryData<UserHabit[]>(
-        ["habits", user?.id],
-        (old = []) => old.filter((h) => h.habitId !== habitId)
-      );
-      return { prev };
-    },
-    onError: (_err, _id, context) => {
-      if (context?.prev) qc.setQueryData(["habits", user?.id], context.prev);
-    },
-    onSettled: () => qc.invalidateQueries({ queryKey: ["habits", user?.id] }),
-  });
-
-  // ── Public actions ────────────────────────────────────────────────────────
+  const isLoading = rawHabits === undefined || rawCompletions === undefined;
 
   const addHabitFromTemplate = useCallback(
     (
@@ -234,8 +151,7 @@ export function HabitsProvider({ children }: { children: ReactNode }) {
     ) => {
       if (!user) return;
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-      insertHabitMutation.mutate({
-        userId: user.id,
+      insertHabitMut({
         templateId: template.templateId,
         title: template.title,
         category: template.category,
@@ -253,40 +169,44 @@ export function HabitsProvider({ children }: { children: ReactNode }) {
         },
       });
     },
-    [user, insertHabitMutation, today]
+    [user, insertHabitMut, today]
   );
 
   const completeToday = useCallback(
     (habitId: string) => {
       if (!user) return;
-      completeTodayMutation.mutate(habitId);
+      toggleCompletionMut({
+        habitId: habitId as Id<"habits">,
+        date: today,
+      });
     },
-    [user, completeTodayMutation]
+    [user, toggleCompletionMut, today]
   );
 
   const updateHabitState = useCallback(
     (habitId: string, state: HabitState) => {
       if (!user) return;
-      updateStateMutation.mutate({ habitId, state });
+      updateStateMut({
+        habitId: habitId as Id<"habits">,
+        state,
+      });
     },
-    [user, updateStateMutation]
+    [user, updateStateMut]
   );
 
   const removeHabit = useCallback(
     (habitId: string) => {
       if (!user) return;
-      removeHabitMutation.mutate(habitId);
+      removeHabitMut({ habitId: habitId as Id<"habits"> });
     },
-    [user, removeHabitMutation]
+    [user, removeHabitMut]
   );
 
   const addSupplementHabit = useCallback(
     (title: string, category: string, _productId: string) => {
       if (!user) return;
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-      insertHabitMutation.mutate({
-        userId: user.id,
-        templateId: undefined,
+      insertHabitMut({
         title: `Take ${title}`,
         category,
         expectedBenefit: "Daily supplement tracking.",
@@ -303,16 +223,14 @@ export function HabitsProvider({ children }: { children: ReactNode }) {
         },
       });
     },
-    [user, insertHabitMutation, today]
+    [user, insertHabitMut, today]
   );
 
   const addCustomHabit = useCallback(
     (title: string, category: string, state: "active" | "planned") => {
       if (!user) return;
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-      insertHabitMutation.mutate({
-        userId: user.id,
-        templateId: undefined,
+      insertHabitMut({
         title,
         category,
         expectedBenefit: "Custom habit.",
@@ -329,7 +247,7 @@ export function HabitsProvider({ children }: { children: ReactNode }) {
         },
       });
     },
-    [user, insertHabitMutation, today]
+    [user, insertHabitMut, today]
   );
 
   const isHabitAddedFromTemplate = useCallback(
@@ -358,7 +276,7 @@ export function HabitsProvider({ children }: { children: ReactNode }) {
       value={{
         habits,
         completedTodayIds,
-        isLoading: habitsLoading || completionsLoading,
+        isLoading,
         addHabitFromTemplate,
         completeToday,
         updateHabitState,

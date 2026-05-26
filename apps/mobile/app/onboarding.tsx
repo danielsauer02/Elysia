@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -7,15 +7,13 @@ import {
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
-  Alert,
-  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { colors, spacing, radii } from "@/theme";
+import { modalTextInputAutofillProps } from "@/lib/textInputAutofill";
 import { useAppContext } from "@/context/AppContext";
-import { useAuth } from "@/context/AuthContext";
 import { WheelPicker } from "@/components/ui/WheelPicker";
 
 // ─── Data ──────────────────────────────────────────────────────────────────
@@ -101,15 +99,6 @@ function SelectChip({
 export default function OnboardingScreen() {
   const router = useRouter();
   const { completeOnboarding } = useAppContext();
-  const { session } = useAuth();
-  const [saving, setSaving] = useState(false);
-
-  // Guard: redirect to login if not authenticated
-  useEffect(() => {
-    if (!session) {
-      router.replace("/(auth)/login");
-    }
-  }, [session]);
 
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
@@ -139,34 +128,21 @@ export default function OnboardingScreen() {
     return true;
   };
 
-  const handleFinish = async () => {
-    setSaving(true);
-    try {
-      await completeOnboarding({
-        name: name.trim(),
-        dateOfBirth: currentDOB,
-        heightCm: currentHeight,
-        weightKg: currentWeight,
-        goals,
-        wearables,
-      });
-      router.replace("/(tabs)/dashboard");
-    } catch (err) {
-      setSaving(false);
-      Alert.alert(
-        "Could not save profile",
-        err instanceof Error ? err.message : "Please check your connection and try again.",
-        [{ text: "OK" }]
-      );
-    }
+  const handleFinish = () => {
+    completeOnboarding({
+      name: name.trim(),
+      dateOfBirth: currentDOB,
+      heightCm: currentHeight,
+      weightKg: currentWeight,
+      goals,
+      wearables,
+    });
+    router.replace("/paywall");
   };
 
   const handleNext = () => {
-    if (step < TOTAL_STEPS - 1) {
-      setStep((s) => s + 1);
-    } else {
-      void handleFinish();
-    }
+    if (step < TOTAL_STEPS - 1) setStep((s) => s + 1);
+    else handleFinish();
   };
 
   return (
@@ -187,21 +163,15 @@ export default function OnboardingScreen() {
           <StepDots current={step} total={TOTAL_STEPS} />
           <TouchableOpacity
             onPress={() => {
-              void (async () => {
-                try {
-                  await completeOnboarding({
-                    name: "Alex",
-                    dateOfBirth: "1990-06-15",
-                    heightCm: 178,
-                    weightKg: 78,
-                    goals: ["Longevity and prevention"],
-                    wearables: [],
-                  });
-                  router.replace("/(tabs)/dashboard");
-                } catch {
-                  router.replace("/(tabs)/dashboard");
-                }
-              })();
+              completeOnboarding({
+                name: "Alex",
+                dateOfBirth: "1990-06-15",
+                heightCm: 178,
+                weightKg: 78,
+                goals: ["Longevity and prevention"],
+                wearables: [],
+              });
+              router.replace("/paywall");
             }}
             style={styles.headerBtn}
           >
@@ -370,25 +340,19 @@ export default function OnboardingScreen() {
         <View style={styles.footer}>
           <TouchableOpacity
             onPress={handleNext}
-            disabled={!canProceed() || saving}
+            disabled={!canProceed()}
             activeOpacity={0.85}
-            style={[styles.nextBtn, (!canProceed() || saving) && styles.nextBtnDisabled]}
+            style={[styles.nextBtn, !canProceed() && styles.nextBtnDisabled]}
           >
-            {saving ? (
-              <ActivityIndicator color="#0C0F1A" size="small" />
-            ) : (
-              <>
-                <Text style={[styles.nextBtnLabel, !canProceed() && styles.nextBtnLabelDisabled]}>
-                  {step === TOTAL_STEPS - 1 ? "Start my journey" : "Continue"}
-                </Text>
-                <Ionicons
-                  name={step === TOTAL_STEPS - 1 ? "leaf" : "arrow-forward"}
-                  size={17}
-                  color={!canProceed() ? colors.textTertiary : "#0C0F1A"}
-                  style={{ marginLeft: 6 }}
-                />
-              </>
-            )}
+            <Text style={[styles.nextBtnLabel, !canProceed() && styles.nextBtnLabelDisabled]}>
+              {step === TOTAL_STEPS - 1 ? "Start my journey" : "Continue"}
+            </Text>
+            <Ionicons
+              name={step === TOTAL_STEPS - 1 ? "leaf" : "arrow-forward"}
+              size={17}
+              color={!canProceed() ? colors.textTertiary : "#0C0F1A"}
+              style={{ marginLeft: 6 }}
+            />
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>

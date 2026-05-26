@@ -1,251 +1,221 @@
 /**
- * SVG aging curve visualization.
+ * AgingCurveChart
  *
- * X-axis = chronological age (0 → life expectancy)
- * Y-axis = biological age
+ * Two-line SVG chart comparing chronological vs Elysia age over a time
+ * window. Driven by `agingTrajectory` rows from Convex (one per day) plus
+ * the latest live values.
  *
- * - Gray diagonal: y = x (biological age tracks chronological perfectly)
- * - Cyan line: your actual biological age track since joining
- * - Dot: current position; below the line = biologically younger (good)
- * - Dashed projection: where you're headed based on current trends
+ * Renders gracefully with sparse data — when only one point is available
+ * we draw it as a single dot with a "Trajectory will appear as you stay
+ * consistent" hint. During calibration the chart is hidden entirely and a
+ * placeholder takes its place.
  */
-import React from "react";
-import { View, Text, StyleSheet, useWindowDimensions } from "react-native";
-import Svg, {
-  Line,
-  Path,
-  Circle,
-  Defs,
-  LinearGradient,
-  Stop,
-  Text as SvgText,
-  Rect,
-} from "react-native-svg";
-import { colors } from "@/theme";
+import { StyleSheet, Text, View } from "react-native";
+import Svg, { Circle, Line, Path, Text as SvgText } from "react-native-svg";
+import { colors, radii, spacing } from "@/theme";
 
-interface AgingPoint {
+export type AgingHistoryPoint = {
+  day?: string;
   chronoAge: number;
   bioAge: number;
+};
+
+type Props = {
+  chronoAge: number;
+  bioAge: number;
+  history: AgingHistoryPoint[];
+  sex: "male" | "female";
+  /** When true, render the placeholder + copy without the lines. */
+  isCalibrating?: boolean;
+  calibrationDaysCompleted?: number;
+  calibrationDaysRequired?: number;
+};
+
+const CHART_WIDTH = 320;
+const CHART_HEIGHT = 160;
+const PAD = { top: 16, right: 12, bottom: 22, left: 30 };
+
+function buildPath(
+  points: number[],
+  width: number,
+  height: number,
+  minY: number,
+  maxY: number
+): string {
+  if (points.length === 0) return "";
+  if (points.length === 1) return `M 0 ${yScale(points[0]!, height, minY, maxY)}`;
+  const stepX = width / (points.length - 1);
+  return points
+    .map((y, i) => {
+      const cmd = i === 0 ? "M" : "L";
+      const cx = i * stepX;
+      const cy = yScale(y, height, minY, maxY);
+      return `${cmd} ${cx.toFixed(2)} ${cy.toFixed(2)}`;
+    })
+    .join(" ");
 }
 
-interface AgingCurveChartProps {
-  chronoAge: number;
-  bioAge: number;
-  history?: AgingPoint[];
-  lifeExpectancy?: number;
+function yScale(v: number, height: number, minY: number, maxY: number): number {
+  if (maxY === minY) return height / 2;
+  return height - ((v - minY) / (maxY - minY)) * height;
 }
 
 export function AgingCurveChart({
   chronoAge,
   bioAge,
-  history = [],
-  lifeExpectancy = 85,
-}: AgingCurveChartProps) {
-  const { width: screenWidth } = useWindowDimensions();
-  const W = screenWidth - 64; // full width minus horizontal padding
-  const H = 220;
-  const PAD = { left: 36, right: 16, top: 20, bottom: 32 };
-  const chartW = W - PAD.left - PAD.right;
-  const chartH = H - PAD.top - PAD.bottom;
+  history,
+  isCalibrating,
+  calibrationDaysCompleted,
+  calibrationDaysRequired,
+}: Props) {
+  if (isCalibrating) {
+    return (
+      <View style={styles.wrap}>
+        <View style={styles.placeholder}>
+          <Text style={styles.placeholderText}>
+            Calibrating your aging trajectory
+          </Text>
+          {calibrationDaysCompleted !== undefined && calibrationDaysRequired !== undefined && (
+            <Text style={styles.placeholderSub}>
+              Day {calibrationDaysCompleted} of {calibrationDaysRequired}
+            </Text>
+          )}
+        </View>
+      </View>
+    );
+  }
 
-  const toX = (age: number) => PAD.left + (age / lifeExpectancy) * chartW;
-  const toY = (bAge: number) => H - PAD.bottom - (bAge / lifeExpectancy) * chartH;
+  // Build series — include the live "today" point in case history is empty.
+  const points = history.length > 0
+    ? history
+    : [{ chronoAge, bioAge }];
+  const allValues = points.flatMap((p) => [p.chronoAge, p.bioAge]);
+  const minY = Math.floor(Math.min(...allValues) - 0.5);
+  const maxY = Math.ceil(Math.max(...allValues) + 0.5);
 
-  // Gray reference line: y = x
-  const refX1 = toX(0);
-  const refY1 = toY(0);
-  const refX2 = toX(lifeExpectancy);
-  const refY2 = toY(lifeExpectancy);
+  const innerW = CHART_WIDTH - PAD.left - PAD.right;
+  const innerH = CHART_HEIGHT - PAD.top - PAD.bottom;
 
-  // Build the cyan biological age path (history + current point)
-  const allPoints: AgingPoint[] = history.length > 0
-    ? [...history, { chronoAge, bioAge }]
-    : [{ chronoAge: chronoAge - 0.3, bioAge: bioAge + 0.5 }, { chronoAge, bioAge }];
+  const chronoPath = buildPath(points.map((p) => p.chronoAge), innerW, innerH, minY, maxY);
+  const bioPath = buildPath(points.map((p) => p.bioAge), innerW, innerH, minY, maxY);
 
-  const bioPath = allPoints
-    .map((p, i) => `${i === 0 ? "M" : "L"} ${toX(p.chronoAge)} ${toY(p.bioAge)}`)
-    .join(" ");
-
-  // Projection: dashed line extending from current point
-  const projectionEndAge = Math.min(chronoAge + 10, lifeExpectancy);
-  const projectionEndBio = bioAge + (chronoAge + 10 - chronoAge) * 0.7; // slowing down aging
-  const projPath = `M ${toX(chronoAge)} ${toY(bioAge)} L ${toX(projectionEndAge)} ${toY(projectionEndBio)}`;
-
-  // Current dot
-  const dotX = toX(chronoAge);
-  const dotY = toY(bioAge);
-
-  // Diff
-  const diff = chronoAge - bioAge;
-  const diffSign = diff >= 0 ? `-${diff.toFixed(1)}` : `+${Math.abs(diff).toFixed(1)}`;
-  const diffColor = diff >= 0 ? colors.success : colors.destructive;
-
-  // Y-axis labels
-  const yLabels = [0, 25, 50, 75, lifeExpectancy];
-  const xLabels = [0, 25, 50, 75, lifeExpectancy];
+  const last = points[points.length - 1]!;
+  const delta = last.bioAge - last.chronoAge;
+  const deltaColor = delta <= 0 ? colors.success : colors.destructive;
 
   return (
     <View style={styles.wrap}>
-      <Svg width={W} height={H}>
-        <Defs>
-          <LinearGradient id="bioGrad" x1="0" y1="0" x2="1" y2="0">
-            <Stop offset="0" stopColor={colors.accent} stopOpacity={0.5} />
-            <Stop offset="1" stopColor={colors.accent} stopOpacity={1} />
-          </LinearGradient>
-        </Defs>
+      <View style={styles.legendRow}>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendDot, { backgroundColor: colors.textSecondary }]} />
+          <Text style={styles.legendLabel}>Chronological</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendDot, { backgroundColor: colors.accent }]} />
+          <Text style={styles.legendLabel}>Elysia Age</Text>
+        </View>
+        <Text style={[styles.deltaText, { color: deltaColor }]}>
+          Δ {delta >= 0 ? "+" : ""}{delta.toFixed(1)} y
+        </Text>
+      </View>
 
-        {/* Grid lines */}
-        {yLabels.map((v) => (
-          <Line
-            key={`gy${v}`}
-            x1={PAD.left}
-            y1={toY(v)}
-            x2={W - PAD.right}
-            y2={toY(v)}
-            stroke={colors.border}
-            strokeWidth={0.5}
-          />
-        ))}
-        {xLabels.map((v) => (
-          <Line
-            key={`gx${v}`}
-            x1={toX(v)}
-            y1={PAD.top}
-            x2={toX(v)}
-            y2={H - PAD.bottom}
-            stroke={colors.border}
-            strokeWidth={0.5}
-          />
-        ))}
+      <Svg width={CHART_WIDTH} height={CHART_HEIGHT}>
+        {/* Y axis ticks */}
+        {[0, 0.5, 1].map((t) => {
+          const y = PAD.top + innerH * t;
+          const label = (maxY - (maxY - minY) * t).toFixed(0);
+          return (
+            <React.Fragment key={t}>
+              <Line
+                x1={PAD.left}
+                x2={PAD.left + innerW}
+                y1={y}
+                y2={y}
+                stroke={colors.border}
+                strokeWidth={0.5}
+                strokeDasharray="2 4"
+              />
+              <SvgText
+                x={PAD.left - 6}
+                y={y + 3}
+                fontSize="9"
+                fill={colors.textTertiary}
+                textAnchor="end"
+              >
+                {label}
+              </SvgText>
+            </React.Fragment>
+          );
+        })}
 
-        {/* Gray reference diagonal (biological = chronological) */}
-        <Line
-          x1={refX1}
-          y1={refY1}
-          x2={refX2}
-          y2={refY2}
-          stroke={colors.borderStrong}
+        {/* Translated chart group */}
+        <Path
+          d={chronoPath}
+          fill="none"
+          stroke={colors.textSecondary}
           strokeWidth={1.5}
-          strokeDasharray="6,4"
+          strokeDasharray="3 3"
+          transform={`translate(${PAD.left}, ${PAD.top})`}
         />
-
-        {/* Cyan biological age track */}
         <Path
           d={bioPath}
-          stroke={colors.accent}
-          strokeWidth={2.5}
           fill="none"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-
-        {/* Dashed projection */}
-        <Path
-          d={projPath}
           stroke={colors.accent}
-          strokeWidth={1.5}
-          fill="none"
-          strokeDasharray="5,4"
-          strokeOpacity={0.5}
+          strokeWidth={2.2}
+          transform={`translate(${PAD.left}, ${PAD.top})`}
         />
 
-        {/* Current age dot on ref line (chronological position) */}
-        <Circle
-          cx={toX(chronoAge)}
-          cy={toY(chronoAge)}
-          r={4}
-          fill={colors.borderStrong}
-          stroke={colors.background}
-          strokeWidth={1}
-        />
-
-        {/* Current biological age dot */}
-        <Circle
-          cx={dotX}
-          cy={dotY}
-          r={7}
-          fill={colors.accent}
-          stroke={colors.background}
-          strokeWidth={2}
-        />
-
-        {/* Age label on dot */}
-        <SvgText
-          x={dotX + 12}
-          y={dotY + 4}
-          fill={colors.accent}
-          fontSize={11}
-          fontWeight="700"
-        >
-          {bioAge.toFixed(1)}
-        </SvgText>
-
-        {/* X-axis labels */}
-        {xLabels.map((v) => (
-          <SvgText
-            key={`xl${v}`}
-            x={toX(v)}
-            y={H - PAD.bottom + 14}
-            fill={colors.textTertiary}
-            fontSize={9}
-            textAnchor="middle"
-          >
-            {v}
-          </SvgText>
-        ))}
-
-        {/* Y-axis labels */}
-        {yLabels.map((v) => (
-          <SvgText
-            key={`yl${v}`}
-            x={PAD.left - 6}
-            y={toY(v) + 3}
-            fill={colors.textTertiary}
-            fontSize={9}
-            textAnchor="end"
-          >
-            {v}
-          </SvgText>
-        ))}
+        {/* Marker for latest bio point */}
+        {points.length > 0 && (
+          <Circle
+            cx={PAD.left + innerW}
+            cy={PAD.top + yScale(last.bioAge, innerH, minY, maxY)}
+            r={3.5}
+            fill={colors.accent}
+          />
+        )}
       </Svg>
 
-      {/* Legend + diff */}
-      <View style={styles.legend}>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendLine, { backgroundColor: colors.borderStrong }]} />
-          <Text style={styles.legendLabel}>Expected (avg)</Text>
-        </View>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendLine, { backgroundColor: colors.accent }]} />
-          <Text style={styles.legendLabel}>Your biological age</Text>
-        </View>
-        <View style={[styles.diffBadge, { backgroundColor: diff >= 0 ? colors.successMuted : colors.destructiveMuted }]}>
-          <Text style={[styles.diffText, { color: diff >= 0 ? colors.success : colors.destructive }]}>
-            {diffSign} yrs {diff >= 0 ? "younger" : "older"}
-          </Text>
-        </View>
-      </View>
+      {points.length < 7 && (
+        <Text style={styles.sparseHint}>
+          Trajectory sharpens as you keep tracking — {7 - points.length} more day
+          {7 - points.length === 1 ? "" : "s"} for a full weekly view.
+        </Text>
+      )}
     </View>
   );
 }
 
+// Local React import for fragment usage in SVG map. Imported lazily to avoid
+// touching unrelated React-Native imports above.
+import React from "react";
+
 const styles = StyleSheet.create({
-  wrap: { gap: 8 },
-  legend: {
+  wrap: { gap: spacing.xs },
+  legendRow: {
     flexDirection: "row",
     alignItems: "center",
-    flexWrap: "wrap",
-    gap: 10,
-    paddingHorizontal: 4,
+    gap: spacing.md,
+    paddingHorizontal: spacing.xs,
   },
-  legendItem: { flexDirection: "row", alignItems: "center", gap: 5 },
-  legendLine: { width: 18, height: 2, borderRadius: 1 },
-  legendLabel: { fontSize: 11, color: colors.textTertiary },
-  diffBadge: {
-    borderRadius: 20,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    marginLeft: "auto",
+  legendItem: { flexDirection: "row", alignItems: "center", gap: 4 },
+  legendDot: { width: 8, height: 8, borderRadius: 4 },
+  legendLabel: { fontSize: 11, color: colors.textSecondary },
+  deltaText: { marginLeft: "auto", fontSize: 12, fontWeight: "700" },
+
+  sparseHint: { fontSize: 10, color: colors.textTertiary, fontStyle: "italic", marginTop: 2 },
+
+  placeholder: {
+    height: 160,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderStyle: "dashed",
+    backgroundColor: colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
   },
-  diffText: { fontSize: 12, fontWeight: "700" },
+  placeholderText: { fontSize: 13, color: colors.textSecondary },
+  placeholderSub: { fontSize: 11, color: colors.textTertiary },
 });

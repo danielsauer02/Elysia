@@ -6,8 +6,18 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
+    "backgroundColor": "#000000",
     "plugins": [
       "expo-router",
+      "expo-font",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 26
+          }
+        }
+      ],
       "expo-notifications",
       [
         "expo-camera",
@@ -20,6 +30,16 @@
         {
           "backupRulesPermission": "Allow Elysia to backup your health data"
         }
+      ],
+      "./plugins/withHealthConnectMainActivity",
+      "expo-secure-store",
+      "expo-web-browser",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Elysia to choose photos for the assistant.",
+          "cameraPermission": "Allow Elysia to take photos for the assistant."
+        }
       ]
     ],
     "experiments": {
@@ -30,22 +50,43 @@
       "bundleIdentifier": "com.elysia.longevity",
       "infoPlist": {
         "NSHealthShareUsageDescription": "Elysia reads your health data to personalise longevity insights and track your habits.",
-        "NSHealthUpdateUsageDescription": "Elysia writes workout and nutrition data to Apple Health."
+        "NSHealthUpdateUsageDescription": "Elysia writes workout and nutrition data to Apple Health.",
+        "UIBackgroundModes": ["fetch", "processing"],
+        "BGTaskSchedulerPermittedIdentifiers": ["com.elysia.longevity.wearable-sync"]
       },
       "entitlements": {
         "com.apple.developer.healthkit": true,
-        "com.apple.developer.healthkit.access": []
+        "com.apple.developer.healthkit.access": [],
+        "com.apple.developer.healthkit.background-delivery": true
       }
+    },
+    "androidNavigationBar": {
+      "backgroundColor": "#000000",
+      "barStyle": "light-content"
     },
     "android": {
       "package": "com.elysia.longevity",
+      "minSdkVersion": 26,
       "permissions": [
         "android.permission.health.READ_STEPS",
         "android.permission.health.READ_HEART_RATE",
+        "android.permission.health.READ_HEART_RATE_VARIABILITY",
+        "android.permission.health.READ_RESTING_HEART_RATE",
         "android.permission.health.READ_SLEEP",
         "android.permission.health.READ_ACTIVE_CALORIES_BURNED",
-        "android.permission.health.READ_DISTANCE"
+        "android.permission.health.READ_BASAL_METABOLIC_RATE",
+        "android.permission.health.READ_DISTANCE",
+        "android.permission.health.READ_OXYGEN_SATURATION",
+        "android.permission.health.READ_RESPIRATORY_RATE",
+        "android.permission.health.READ_VO2_MAX",
+        "android.permission.health.READ_EXERCISE",
+        "android.permission.ACCESS_BACKGROUND_LOCATION"
       ]
+    },
+    "extra": {
+      "eas": {
+        "projectId": "5030a571-6e40-42b0-a03f-06758c09cae6"
+      }
     }
   }
 }

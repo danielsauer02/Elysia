@@ -2,7 +2,6 @@ import React, { useState } from "react";
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
   KeyboardAvoidingView,
@@ -14,23 +13,34 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/context/AuthContext";
+import { AuthTextField } from "@/components/AuthTextField";
+import { isValidEmail } from "@/lib/validation";
 import { colors, spacing, radii } from "@/theme";
+
+type RegisterPhase = "form" | "verifyCode" | "successLink";
 
 export default function RegisterScreen() {
   const router = useRouter();
-  const { signUp } = useAuth();
+  const { signUp, completeSignUpWithEmailCode } = useAuth();
 
+  const [phase, setPhase] = useState<RegisterPhase>("form");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [verificationCode, setVerificationCode] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
   const handleRegister = async () => {
-    if (!email.trim() || !password) {
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedEmail || !password) {
       setError("Please fill in all fields.");
+      return;
+    }
+    if (!isValidEmail(trimmedEmail)) {
+      setError("Enter a valid email address (e.g. you@example.com).");
       return;
     }
     if (password.length < 6) {
@@ -44,15 +54,104 @@ export default function RegisterScreen() {
 
     setError(null);
     setLoading(true);
-    const { error: authError } = await signUp(email.trim().toLowerCase(), password);
+    const { error: authError, signedIn, needsEmailCode } = await signUp(
+      email.trim().toLowerCase(),
+      password
+    );
     setLoading(false);
 
     if (authError) {
       setError(authError);
-    } else {
-      setSuccess(true);
+      return;
+    }
+    if (signedIn) {
+      router.replace("/");
+      return;
+    }
+    if (needsEmailCode) {
+      setPhase("verifyCode");
+      setVerificationCode("");
+      return;
+    }
+    setSuccess(true);
+  };
+
+  const handleVerifyCode = async () => {
+    setError(null);
+    setLoading(true);
+    const { error: verifyError, signedIn } =
+      await completeSignUpWithEmailCode(verificationCode);
+    setLoading(false);
+    if (verifyError) {
+      setError(verifyError);
+      return;
+    }
+    if (signedIn) {
+      router.replace("/");
     }
   };
+
+  if (phase === "verifyCode") {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
+          <ScrollView
+            contentContainerStyle={styles.scroll}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <TouchableOpacity style={styles.backBtn} onPress={() => setPhase("form")}>
+              <Ionicons name="arrow-back" size={22} color={colors.textPrimary} />
+            </TouchableOpacity>
+            <View style={styles.card}>
+              <Text style={styles.heading}>Check your email</Text>
+              <Text style={styles.subheading}>
+                Enter the 6-digit code we sent to{" "}
+                <Text style={styles.successEmail}>{email}</Text>
+              </Text>
+              {error && (
+                <View style={styles.errorBanner}>
+                  <Ionicons name="alert-circle-outline" size={16} color="#F87171" />
+                  <Text style={styles.errorText}>{error}</Text>
+                </View>
+              )}
+              <View style={styles.fieldGroup}>
+                <Text style={styles.label}>Verification code</Text>
+                <View style={styles.inputWrap}>
+                  <AuthTextField
+                    variant="otp"
+                    style={[styles.input, styles.otpInput]}
+                    value={verificationCode}
+                    onChangeText={(t) => setVerificationCode(t.replace(/\D/g, "").slice(0, 8))}
+                    placeholder="000000"
+                    placeholderTextColor={colors.textTertiary}
+                    keyboardType="number-pad"
+                    maxLength={8}
+                    autoFocus
+                  />
+                </View>
+              </View>
+              <TouchableOpacity
+                style={[styles.primaryBtn, loading && styles.primaryBtnDisabled]}
+                onPress={handleVerifyCode}
+                disabled={loading}
+                activeOpacity={0.85}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#0C0F1A" size="small" />
+                ) : (
+                  <Text style={styles.primaryBtnText}>Verify and continue</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    );
+  }
 
   if (success) {
     return (
@@ -121,7 +220,8 @@ export default function RegisterScreen() {
               <Text style={styles.label}>Email</Text>
               <View style={styles.inputWrap}>
                 <Ionicons name="mail-outline" size={18} color={colors.textTertiary} />
-                <TextInput
+                <AuthTextField
+                  variant="emailRegister"
                   style={styles.input}
                   value={email}
                   onChangeText={setEmail}
@@ -129,7 +229,6 @@ export default function RegisterScreen() {
                   placeholderTextColor={colors.textTertiary}
                   keyboardType="email-address"
                   autoCapitalize="none"
-                  autoComplete="email"
                 />
               </View>
             </View>
@@ -139,7 +238,8 @@ export default function RegisterScreen() {
               <Text style={styles.label}>Password</Text>
               <View style={styles.inputWrap}>
                 <Ionicons name="lock-closed-outline" size={18} color={colors.textTertiary} />
-                <TextInput
+                <AuthTextField
+                  variant="passwordNew"
                   style={styles.input}
                   value={password}
                   onChangeText={setPassword}
@@ -162,7 +262,8 @@ export default function RegisterScreen() {
               <Text style={styles.label}>Confirm password</Text>
               <View style={styles.inputWrap}>
                 <Ionicons name="lock-closed-outline" size={18} color={colors.textTertiary} />
-                <TextInput
+                <AuthTextField
+                  variant="passwordConfirm"
                   style={styles.input}
                   value={confirmPassword}
                   onChangeText={setConfirmPassword}
@@ -293,6 +394,11 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     color: colors.textPrimary,
+  },
+  otpInput: {
+    letterSpacing: 6,
+    fontSize: 20,
+    fontWeight: "600",
   },
   primaryBtn: {
     height: 52,
