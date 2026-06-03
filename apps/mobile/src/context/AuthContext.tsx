@@ -60,7 +60,7 @@ function clerkErrors(e: unknown): string {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const { isLoaded: clerkLoaded, userId, isSignedIn } = useClerkAuth();
+  const { isLoaded: clerkLoaded, userId, isSignedIn, getToken } = useClerkAuth();
   const {
     signUp: clerkSignUp,
     setActive: setActiveSignUp,
@@ -86,6 +86,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       reset();
     }
   }, [isSignedIn, userId, clerkLoaded]);
+
+  // ── Convex JWT template diagnostic ─────────────────────────────────
+  // Verifies that Clerk → Convex auth hand-off is set up. The
+  // `ConvexProviderWithClerk` calls `getToken({ template: "convex" })`
+  // on every Convex request. If the template doesn't exist in the
+  // Clerk dashboard (Dashboard → JWT Templates → New template named
+  // "convex"), Clerk returns `null` silently and every Convex function
+  // throws "Not authenticated". This effect surfaces that case so the
+  // root cause is obvious in the dev console instead of buried in
+  // server-side stack traces.
+  useEffect(() => {
+    if (!__DEV__) return;
+    if (!clerkLoaded || !isSignedIn) return;
+    void (async () => {
+      try {
+        const token = await getToken({ template: "convex" });
+        if (!token) {
+          // eslint-disable-next-line no-console
+          console.warn(
+            "[Convex auth] Clerk returned NO token for template 'convex'. " +
+              "Create a JWT template named 'convex' in the Clerk Dashboard " +
+              "(JWT Templates → New template → name: convex, audience: convex). " +
+              "Without it, every Convex function call throws 'Not authenticated'."
+          );
+        } else {
+          // eslint-disable-next-line no-console
+          console.log(
+            `[Convex auth] OK — got JWT for template 'convex' (len=${token.length}).`
+          );
+        }
+      } catch (e: unknown) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          "[Convex auth] getToken({ template: 'convex' }) threw:",
+          e instanceof Error ? e.message : String(e)
+        );
+      }
+    })();
+  }, [clerkLoaded, isSignedIn, getToken]);
 
   const signUp = useCallback(
     async (email: string, password: string) => {

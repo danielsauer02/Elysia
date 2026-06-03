@@ -1,7 +1,6 @@
 const { getDefaultConfig } = require("expo/metro-config");
 const path = require("path");
 const fs = require("fs");
-const { resolve } = require("metro-resolver");
 
 const projectRoot = __dirname;
 const monorepoRoot = path.resolve(projectRoot, "../..");
@@ -112,11 +111,15 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
       }
     }
   }
-  // Fall through to Metro's default resolver, then post-process so that
-  // any Skia spec file imported relatively from inside `lib/module/`
-  // (e.g. `../specs/SkiaPictureViewNativeComponent`) is served from the
-  // original TS source — codegen needs the type annotations.
-  const result = resolve(context, moduleName, platform);
+  // Fall through to Metro's DEFAULT resolver (provided as
+  // `context.resolveRequest`), not the bare `metro-resolver`. The default
+  // resolver keeps Expo's asset handling intact — calling `metro-resolver`
+  // directly misclassifies assets (e.g. `.png`) as source files, which
+  // then get fed to Babel and blow the stack on binary data. We then
+  // post-process so that any Skia spec file imported relatively from inside
+  // `lib/module/` (e.g. `../specs/SkiaPictureViewNativeComponent`) is served
+  // from the original TS source — codegen needs the type annotations.
+  const result = context.resolveRequest(context, moduleName, platform);
   if (
     result &&
     result.type === "sourceFile" &&

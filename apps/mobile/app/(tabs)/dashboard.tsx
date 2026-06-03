@@ -10,6 +10,8 @@ import {
 import RNAnimated from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { useQuery } from "convex/react";
+import { api } from "@convex/_generated/api";
 import {
   colors,
   radii,
@@ -35,6 +37,7 @@ import { EnergyBalanceCard } from "@/components/analytics/EnergyBalanceCard";
 import { InsightsFeed } from "@/components/ai/InsightsFeed";
 import { HealthDataGrid } from "@/components/dashboard/HealthDataGrid";
 import { useStickyRingsHeader } from "@/components/dashboard/StickyRingsHeader";
+import { useOverscrollBounce } from "@/hooks/useOverscrollBounce";
 import type { SummaryRingValue } from "@/components/dashboard/DailySummaryRings";
 
 // ─── Mock aging data ─────────────────────────────────────────────────────────
@@ -237,7 +240,6 @@ export default function DashboardScreen() {
   const { onboardingData } = useAppContext();
   const { macroTargets, getDayTotals, isGoalSet } = useNutrition();
 
-  const firstName = onboardingData?.name?.split(" ")[0] ?? "there";
   const chronoAgeFromDob = calcChronoAge(onboardingData?.dateOfBirth);
   const foodTotals = getDayTotals();
 
@@ -268,14 +270,6 @@ export default function DashboardScreen() {
     }).start();
   };
 
-  // Today's date in a Bevel-style "Today, 26 May" format.
-  const today = new Date();
-  const todayLabel = today.toLocaleDateString(undefined, {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-  });
-
   // ─── Summary rings (Whoop trio) — drives both the in-flow expanded
   // header and the sticky compact bar.
   // We map onto the v1.2.0 wheel layers:
@@ -284,17 +278,32 @@ export default function DashboardScreen() {
   //   strain   = movement        (activity / strain proxy)
   // The composite is shown in the inner Longevity Battery further below.
   const layers = (longevity.layerScores ?? {}) as Record<string, number | null | undefined>;
+
+  // Sleep ring mirrors the Elysia Sleep Score of the LAST recorded night
+  // (same value as the /sleep deep-dive hero), falling back to the
+  // recovery+sleep display layer only when there's no sleep history yet.
+  const latestSleep = useQuery(api.sleep.getLatestSleepScore, {});
+  const sleepRingValue =
+    latestSleep?.score ?? layers.recoverySleep ?? null;
+
+  // Recovery ring mirrors the /recovery deep-dive hero (same Recovery
+  // Fitness Score), falling back to the longevity display layer only when
+  // there's no HRV/RHR history yet.
+  const latestRecovery = useQuery(api.recovery.getLatestRecoveryScore, {});
+  const recoveryRingValue =
+    latestRecovery?.score ?? layers.stressPsyche ?? longevity.composite ?? null;
+
   const summaryValues: SummaryRingValue[] = useMemo(
     () => [
       {
         id: "sleep",
         label: "Sleep",
-        value: layers.recoverySleep ?? null,
+        value: sleepRingValue,
       },
       {
         id: "recovery",
         label: "Recovery",
-        value: layers.stressPsyche ?? longevity.composite ?? null,
+        value: recoveryRingValue,
       },
       {
         id: "strain",
@@ -302,7 +311,7 @@ export default function DashboardScreen() {
         value: layers.movement ?? null,
       },
     ],
-    [layers.recoverySleep, layers.stressPsyche, layers.movement, longevity.composite]
+    [sleepRingValue, recoveryRingValue, layers.movement]
   );
 
   const summaryContext = calibrating
@@ -312,44 +321,47 @@ export default function DashboardScreen() {
     : firstSummaryLine(summaryValues);
 
   const onRingPress = useCallback(
-    (_id: string) => {
-      // Future: route to the pillar's detail screen.
+    (id: string) => {
+      if (id === "sleep") {
+        router.push("/sleep");
+        return;
+      }
+      if (id === "recovery") {
+        router.push("/recovery");
+        return;
+      }
+      // Other pillars (strain, ...) get dedicated screens later.
     },
-    []
+    [router]
   );
 
-  const { onScroll, header } = useStickyRingsHeader({
-    values: summaryValues,
-    topOffset: topBarHeight,
-    contextLine: summaryContext,
-    onPressRing: onRingPress,
-  });
+  const { onScroll, placeholderHeight, overlay: ringsOverlay } =
+    useStickyRingsHeader({
+      values: summaryValues,
+      topOffset: topBarHeight,
+      onPressRing: onRingPress,
+    });
+  // Soft overscroll bounce when the user flicks back to the top.
+  const bounceStyle = useOverscrollBounce();
 
   return (
-    <View style={styles.safe}>
+    <RNAnimated.View style={[styles.safe, bounceStyle] as never}>
       <RNAnimated.ScrollView
+        // `placeholderHeight` already includes the AppTopBar height
+        // PLUS the morphing rings' expanded height, so the first
+        // real content card lands directly under the big rings at
+        // scrollY = 0.
         contentContainerStyle={[
           styles.content,
-          { paddingTop: topBarHeight + spacing.xs, paddingBottom: tabScrollPad },
+          { paddingTop: placeholderHeight, paddingBottom: tabScrollPad },
         ]}
         showsVerticalScrollIndicator={false}
         scrollEventThrottle={16}
         onScroll={onScroll}
+        overScrollMode="never"
+        bounces={false}
         removeClippedSubviews
       >
-        {/* Greeting + date header — sits below TopBar, above the rings. */}
-        <View style={styles.greetingRow}>
-          <View style={styles.greetingBlock}>
-            <Text style={styles.dateLabel}>{todayLabel}</Text>
-            <Text style={styles.greetingText}>
-              <Text style={styles.greetingDim}>Hi, </Text>
-              <Text style={styles.greetingStrong}>{firstName}</Text>
-            </Text>
-          </View>
-        </View>
-
-        {/* Whoop-style summary trio — collapses into the sticky header. */}
-        {header}
 
         {/* ── Main Age Card (Aging Trajectory / Longevity Performance) ── */}
       <View style={styles.sectionPad}>
@@ -573,7 +585,13 @@ export default function DashboardScreen() {
           <Card><WeeklyChart /></Card>
         </View>
       </RNAnimated.ScrollView>
-    </View>
+
+      {/* Morphing rings overlay — single continuous element that
+          shrinks from expanded → mini as the user scrolls. Rendered
+          OUTSIDE the ScrollView as a Screen-level sibling so it
+          pins to the top instead of scrolling with content. */}
+      {ringsOverlay}
+    </RNAnimated.View>
   );
 }
 
@@ -594,27 +612,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
     gap: spacing.xl,
   },
-
-  // Greeting row (below the global TopBar)
-  greetingRow: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.xs,
-    flexDirection: "row",
-    alignItems: "flex-end",
-    justifyContent: "space-between",
-  },
-  greetingBlock: { gap: 2 },
-  dateLabel: {
-    ...typography.eyebrow,
-    color: text.tertiary,
-  },
-  greetingText: {
-    ...typography.title1,
-    fontSize: 24,
-  },
-  greetingDim: { color: text.secondary },
-  greetingStrong: { color: text.primary },
 
   // Horizontal inset that all "card sections" use so cards sit inset from
   // the screen edges (Whoop / Bevel feel) instead of going edge-to-edge.

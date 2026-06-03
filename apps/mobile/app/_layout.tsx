@@ -14,6 +14,8 @@ import { NutritionProvider } from "@/context/NutritionContext";
 import { RevenueCatProvider } from "@/context/RevenueCatContext";
 import { WearableProvider } from "@/context/WearableContext";
 import { AiAssistantProvider } from "@/context/AiAssistantContext";
+import { ScrollProvider } from "@/context/ScrollContext";
+import { GlobalTabBarOverlay } from "@/components/navigation/GlobalTabBarOverlay";
 import { tokenCache } from "@/lib/tokenCache";
 import { navigationTheme } from "@/theme/navigation";
 import { StyleSheet, Text, TextInput, View } from "react-native";
@@ -98,6 +100,7 @@ export default function RootLayout() {
                   <GestureHandlerRootView style={styles.flex}>
                     <BottomSheetModalProvider>
                       <AiAssistantProvider>
+                        <ScrollProvider>
                         <StatusBar style="light" />
                         <ThemeProvider value={navigationTheme}>
                           <Stack
@@ -114,8 +117,43 @@ export default function RootLayout() {
                             <Stack.Screen name="onboarding" />
                             <Stack.Screen name="paywall" />
                             <Stack.Screen name="(tabs)" />
+                            <Stack.Screen
+                              name="sleep"
+                              options={{ animation: "slide_from_right" }}
+                            />
+                            <Stack.Screen
+                              name="sleep-trend"
+                              options={{ animation: "slide_from_right" }}
+                            />
+                            <Stack.Screen
+                              name="sleep-metric/[metric]"
+                              options={{ animation: "slide_from_right" }}
+                            />
+                            <Stack.Screen
+                              name="recovery"
+                              options={{ animation: "slide_from_right" }}
+                            />
+                            <Stack.Screen
+                              name="recovery-trend"
+                              options={{ animation: "slide_from_right" }}
+                            />
+                            <Stack.Screen
+                              name="recovery-metric/[metric]"
+                              options={{ animation: "slide_from_right" }}
+                            />
+                            <Stack.Screen
+                              name="energy-reserve"
+                              options={{ animation: "slide_from_right" }}
+                            />
                           </Stack>
+                          {/* Global bottom tab bar — sits above every
+                             screen so it remains visible in deep-dive
+                             routes like /sleep. Hidden automatically on
+                             welcome / auth / onboarding via segments
+                             check inside the component. */}
+                          <GlobalTabBarOverlay />
                         </ThemeProvider>
+                        </ScrollProvider>
                       </AiAssistantProvider>
                     </BottomSheetModalProvider>
                   </GestureHandlerRootView>

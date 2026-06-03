@@ -8,8 +8,12 @@ import { glassAnthracite } from "@/theme/glass";
 export const FLOATING_TAB_BAR = {
   /** Matches screen content horizontal padding (spacing.lg) */
   horizontalInset: 16,
-  /** Extra lift above the home-indicator safe area */
-  bottomLift: 20,
+  /**
+   * Tiny breathing room above the home-indicator safe area so the bar
+   * sits *flush* with the Android navigation buttons (or iOS home
+   * indicator). The user explicitly wants no gap below the bar.
+   */
+  bottomLift: 2,
   /** Visual height of the pill (icons + labels) */
   height: 54,
   /** Square AI launcher tile (matches pill height) */

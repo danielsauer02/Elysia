@@ -15,6 +15,11 @@
 import React from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Animated, {
+  Extrapolation,
+  interpolate,
+  useAnimatedStyle,
+} from "react-native-reanimated";
 import { BlurView } from "expo-blur";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -28,23 +33,72 @@ import {
 } from "@/theme";
 import { AnimatedPressable } from "@/components/ui/AnimatedPressable";
 import { DailyStatusPill } from "@/components/navigation/DailyStatusPill";
+import {
+  useActiveHeaderProgress,
+  useActiveScrollY,
+} from "@/context/ScrollContext";
+import { BAR_SOLID } from "@/components/dashboard/StickyRingsHeader";
 
 const BAR_HEIGHT = 52;
 
 export function AppTopBar() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const headerProgress = useActiveHeaderProgress();
+  const scrollY = useActiveScrollY();
 
   const totalHeight = BAR_HEIGHT + insets.top;
 
+  // Slides off-screen when `headerProgress` is 0 (scrolling down),
+  // back into place when 1 (scrolling up or at top). The value is
+  // already smoothly animated upstream via `withTiming`, so this
+  // mapping stays direct — no further easing needed here.
+  const wrapStyle = useAnimatedStyle(() => {
+    const p = headerProgress.value;
+    return {
+      opacity: p,
+      transform: [{ translateY: -totalHeight * (1 - p) }],
+    };
+  }, [totalHeight]);
+
+  // When the user has scrolled at all we swap the translucent blurred
+  // glass look for a fully opaque dark surface. Reason: in the
+  // "header visible + mini rings bar visible" state the two surfaces
+  // need to look like one continuous opaque block — a translucent
+  // blur would let card content show through and break the visual.
+  // In the resting state (scrollY ≈ 0) the cool blur is preserved.
+  const solidStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(
+      scrollY.value,
+      [0, 20],
+      [0, 1],
+      Extrapolation.CLAMP
+    ),
+  }));
+
   return (
-    <View style={[styles.wrap, { height: totalHeight }]}>
+    <Animated.View
+      // When the bar slides out of view we want the touches that would
+      // have hit the avatar / bell to fall through to whatever is
+      // underneath (the mini rings bar). `auto` still respects opacity
+      // so this is purely a defensive setting; the visible-state UX
+      // remains unchanged.
+      pointerEvents="box-none"
+      style={[styles.wrap, { height: totalHeight }, wrapStyle]}
+    >
       <BlurView
         intensity={glass.anthracite.blurIntensity}
         tint="dark"
         style={StyleSheet.absoluteFill}
       />
       <View style={[StyleSheet.absoluteFill, styles.tint]} />
+      {/* Solid opaque layer — invisible at rest, fades in once the
+          user starts scrolling so the bar matches the mini rings
+          backdrop seamlessly. */}
+      <Animated.View
+        pointerEvents="none"
+        style={[StyleSheet.absoluteFill, styles.solid, solidStyle]}
+      />
       <View style={[styles.row, { paddingTop: insets.top }]}>
         <View style={styles.left}>
           <DailyStatusPill />
@@ -79,7 +133,7 @@ export function AppTopBar() {
       </View>
       {/* Hairline divider at the bottom edge */}
       <View style={styles.hairline} pointerEvents="none" />
-    </View>
+    </Animated.View>
   );
 }
 
@@ -105,6 +159,9 @@ const styles = StyleSheet.create({
       Platform.OS === "android"
         ? surface.overlay
         : glass.anthracite.tint,
+  },
+  solid: {
+    backgroundColor: BAR_SOLID,
   },
   row: {
     flex: 1,

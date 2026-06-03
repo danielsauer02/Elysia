@@ -819,12 +819,12 @@ export const writeUserBaselineInternal = internalMutation({
 export const getDistinctScoringUsersInternal = internalQuery({
   args: {},
   handler: async (ctx) => {
-    // Collect from wearableDailyMetrics — anyone with at least one rolled-up
-    // day has enough data to start calibrating. Cheap enough at MVP scale.
-    const rows = await ctx.db.query("wearableDailyMetrics").collect();
-    const ids = new Set<string>();
-    for (const r of rows) ids.add(r.userId);
-    return [...ids];
+    // Iterate the (small) profiles table instead of scanning the entire
+    // wearableDailyMetrics table, which grows with users × days. Users with
+    // no rolled-up wearable data are cheaply skipped downstream in
+    // refreshUserBaseline (one indexed range query that returns no rows).
+    const profiles = await ctx.db.query("profiles").collect();
+    return profiles.map((p) => p.clerkUserId);
   },
 });
 
@@ -855,7 +855,10 @@ function dayHasMeaningfulWearableData(row: WearableDayRow): boolean {
 
 export const refreshUserBaseline = internalAction({
   args: { userId: v.string() },
-  handler: async (ctx, { userId }) => {
+  handler: async (
+    ctx,
+    { userId }
+  ): Promise<{ hasData: boolean; daysCalibrated: number }> => {
     const today = new Date();
     const windowEnd = isoDay(today);
     const windowStart = isoDay(
@@ -868,6 +871,14 @@ export const refreshUserBaseline = internalAction({
     );
 
     const wrows = wearableRows as WearableDayRow[];
+
+    // No rolled-up wearable data in the window → nothing to baseline. Skip the
+    // write so cron sweeps over data-less users stay cheap (and don't create
+    // empty baseline rows for every profile).
+    if (wrows.length === 0) {
+      return { hasData: false, daysCalibrated: 0 };
+    }
+
     const daysCalibrated = wrows.filter(dayHasMeaningfulWearableData).length;
 
     const numericMedian = (values: number[]): number | null => {
@@ -899,6 +910,8 @@ export const refreshUserBaseline = internalAction({
       status,
       daysCalibrated,
     });
+
+    return { hasData: true, daysCalibrated };
   },
 });
 
@@ -928,8 +941,15 @@ export const refreshAllBaselines = internalAction({
       {}
     );
     const today = isoDay(new Date());
+    let processed = 0;
     for (const userId of userIds) {
-      await ctx.runAction(internal.scoring.refreshUserBaseline, { userId });
+      const { hasData } = await ctx.runAction(
+        internal.scoring.refreshUserBaseline,
+        { userId }
+      );
+      // Users without rolled-up wearable data have nothing to score — skip the
+      // two recompute actions entirely instead of writing near-empty rows.
+      if (!hasData) continue;
       // Re-run today's pipeline so newly-ready users get a trajectory row.
       await ctx.runAction(internal.scoring.recomputeDailyHealthScores, {
         userId,
@@ -939,8 +959,9 @@ export const refreshAllBaselines = internalAction({
         userId,
         day: today,
       });
+      processed++;
     }
-    return { processed: userIds.length };
+    return { processed };
   },
 });
 

@@ -412,9 +412,15 @@ export const fetchWhoopData = action({
 });
 
 export const pullWhoopInternal = internalAction({
-  args: { userId: v.string(), daysBack: v.optional(v.number()) },
-  handler: async (ctx, { userId, daysBack }) => {
-    return await pullWhoopForUser(ctx, userId, daysBack);
+  args: {
+    userId: v.string(),
+    daysBack: v.optional(v.number()),
+    scheduled: v.optional(v.boolean()),
+  },
+  handler: async (ctx, { userId, daysBack, scheduled }) => {
+    return await pullWhoopForUser(ctx, userId, daysBack, {
+      markSyncIfChanged: scheduled === true,
+    });
   },
 });
 
@@ -545,9 +551,15 @@ export const fetchOuraData = action({
 });
 
 export const pullOuraInternal = internalAction({
-  args: { userId: v.string() },
-  handler: async (ctx, { userId }) => {
-    return await pullOuraForUser(ctx, userId);
+  args: {
+    userId: v.string(),
+    daysBack: v.optional(v.number()),
+    scheduled: v.optional(v.boolean()),
+  },
+  handler: async (ctx, { userId, daysBack, scheduled }) => {
+    return await pullOuraForUser(ctx, userId, daysBack, {
+      markSyncIfChanged: scheduled === true,
+    });
   },
 });
 
@@ -626,9 +638,15 @@ export const fetchFitbitData = action({
 });
 
 export const pullFitbitInternal = internalAction({
-  args: { userId: v.string() },
-  handler: async (ctx, { userId }) => {
-    return await pullFitbitForUser(ctx, userId);
+  args: {
+    userId: v.string(),
+    daysBack: v.optional(v.number()),
+    scheduled: v.optional(v.boolean()),
+  },
+  handler: async (ctx, { userId, daysBack, scheduled }) => {
+    return await pullFitbitForUser(ctx, userId, daysBack, {
+      markSyncIfChanged: scheduled === true,
+    });
   },
 });
 
@@ -661,6 +679,20 @@ type ActionLike = {
   runMutation: (ref: any, args: any) => Promise<any>;
   runAction?: (ref: any, args: any) => Promise<any>;
 };
+
+/** Options shared by the provider pull helpers. */
+type PullOpts = {
+  /**
+   * When true (scheduled cron pulls), only refresh the connection's
+   * `lastSyncedAt` marker if new samples were actually inserted. Manual /
+   * foreground syncs leave this false and always stamp the sync time.
+   */
+  markSyncIfChanged?: boolean;
+};
+
+function shouldMarkSync(opts: PullOpts, inserted: number): boolean {
+  return !opts.markSyncIfChanged || inserted > 0;
+}
 
 type WhoopPagedResponse = { records?: unknown[]; next_token?: string | null };
 
@@ -809,7 +841,8 @@ type WhoopPullResult = {
 async function pullWhoopForUser(
   ctx: ActionLike,
   userId: string,
-  daysBack = 7
+  daysBack = 7,
+  opts: PullOpts = {}
 ): Promise<WhoopPullResult> {
   const token = await getWhoopAccessToken(ctx, userId);
   if (!token) throw new Error("Whoop not connected");
@@ -893,12 +926,16 @@ async function pullWhoopForUser(
     cycle.diag,
   ];
 
-  await ctx.runMutation(internal.integrations.upsertConnection, {
-    userId,
-    provider: "whoop",
-    isActive: true,
-    lastSyncedAt: new Date().toISOString(),
-  });
+  // Scheduled pulls skip the sync-marker write when nothing new landed, to
+  // avoid 12+ no-op writes/day that would invalidate reactive subscriptions.
+  if (shouldMarkSync(opts, inserted)) {
+    await ctx.runMutation(internal.integrations.upsertConnection, {
+      userId,
+      provider: "whoop",
+      isActive: true,
+      lastSyncedAt: new Date().toISOString(),
+    });
+  }
 
   return { inserted, skipped, diagnostics };
 }
@@ -945,7 +982,12 @@ async function validateWhoopToken(auth: WhoopAuth): Promise<EndpointDiagnostic> 
   return diag;
 }
 
-async function pullOuraForUser(ctx: ActionLike, userId: string, daysBack = 7) {
+async function pullOuraForUser(
+  ctx: ActionLike,
+  userId: string,
+  daysBack = 7,
+  opts: PullOpts = {}
+) {
   const conn: { accessToken?: string } | null = await ctx.runQuery(
     internal.integrations.getConnectionInternal,
     { userId, provider: "oura" }
@@ -999,17 +1041,24 @@ async function pullOuraForUser(ctx: ActionLike, userId: string, daysBack = 7) {
     }
   }
 
-  await ctx.runMutation(internal.integrations.upsertConnection, {
-    userId,
-    provider: "oura",
-    isActive: true,
-    lastSyncedAt: new Date().toISOString(),
-  });
+  if (shouldMarkSync(opts, inserted)) {
+    await ctx.runMutation(internal.integrations.upsertConnection, {
+      userId,
+      provider: "oura",
+      isActive: true,
+      lastSyncedAt: new Date().toISOString(),
+    });
+  }
 
   return { inserted, skipped };
 }
 
-async function pullFitbitForUser(ctx: ActionLike, userId: string, daysBack = 7) {
+async function pullFitbitForUser(
+  ctx: ActionLike,
+  userId: string,
+  daysBack = 7,
+  opts: PullOpts = {}
+) {
   const token = await getFitbitAccessToken(ctx, userId);
   if (!token) throw new Error("Fitbit not connected");
   const headers = { Authorization: `Bearer ${token}` };
@@ -1059,12 +1108,14 @@ async function pullFitbitForUser(ctx: ActionLike, userId: string, daysBack = 7) 
     }
   }
 
-  await ctx.runMutation(internal.integrations.upsertConnection, {
-    userId,
-    provider: "fitbit",
-    isActive: true,
-    lastSyncedAt: new Date().toISOString(),
-  });
+  if (shouldMarkSync(opts, inserted)) {
+    await ctx.runMutation(internal.integrations.upsertConnection, {
+      userId,
+      provider: "fitbit",
+      isActive: true,
+      lastSyncedAt: new Date().toISOString(),
+    });
+  }
 
   return { inserted, skipped };
 }

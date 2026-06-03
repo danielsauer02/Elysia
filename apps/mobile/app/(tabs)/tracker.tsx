@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
-  ScrollView,
   Text,
   View,
   StyleSheet,
@@ -10,6 +9,7 @@ import {
   Alert,
   ActivityIndicator,
 } from "react-native";
+import Reanimated from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -32,6 +32,8 @@ import { useAuth } from "@/context/AuthContext";
 import { mockMacroTarget, type FoodEntry } from "@/mocks/data";
 import { fetchProductByBarcode } from "@/lib/openFoodFacts";
 import { useFloatingTabBarScrollPadding } from "@/hooks/useFloatingTabBarScrollPadding";
+import { useNavScrollHandler } from "@/hooks/useNavScrollHandler";
+import { useOverscrollBounce } from "@/hooks/useOverscrollBounce";
 import { FoodCameraSheet } from "@/components/nutrition/FoodCameraSheet";
 import { QuickLogSheet } from "@/components/nutrition/QuickLogSheet";
 import type { BottomSheetModal as BottomSheetModalType } from "@gorhom/bottom-sheet";
@@ -193,6 +195,8 @@ function HabitCard({
 function HabitsSection() {
   const router = useRouter();
   const scrollPad = useFloatingTabBarScrollPadding();
+  const { onScroll } = useNavScrollHandler();
+  const bounceStyle = useOverscrollBounce();
   const { habits, completedTodayIds, completeToday, updateHabitState, getTodayProgress } = useHabits();
   const [filter, setFilter] = useState<HabitFilter>("active");
 
@@ -211,9 +215,14 @@ function HabitsSection() {
   ];
 
   return (
-    <ScrollView
+    <Reanimated.View style={[styles.flex, bounceStyle] as never}>
+    <Reanimated.ScrollView
       contentContainerStyle={[styles.sectionContent, { paddingBottom: scrollPad }]}
       showsVerticalScrollIndicator={false}
+      onScroll={onScroll}
+      scrollEventThrottle={16}
+      overScrollMode="never"
+      bounces={false}
     >
       {/* Swim lanes first */}
       <TabSwitcher
@@ -278,7 +287,8 @@ function HabitsSection() {
           ))
         )}
       </View>
-    </ScrollView>
+    </Reanimated.ScrollView>
+    </Reanimated.View>
   );
 }
 
@@ -430,6 +440,8 @@ function BarcodeScanModal({
 
 function NutritionSection() {
   const scrollPad = useFloatingTabBarScrollPadding();
+  const { onScroll } = useNavScrollHandler();
+  const bounceStyle = useOverscrollBounce();
   const { session } = useAuth();
   const { macroTargets, todayFoodEntries, isLoading } = useNutrition();
   const [scanOpen, setScanOpen] = useState(false);
@@ -457,9 +469,14 @@ function NutritionSection() {
 
   return (
     <>
-      <ScrollView
+      <Reanimated.View style={[styles.flex, bounceStyle] as never}>
+      <Reanimated.ScrollView
         contentContainerStyle={[styles.sectionContent, { paddingBottom: scrollPad }]}
         showsVerticalScrollIndicator={false}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+        overScrollMode="never"
+        bounces={false}
       >
         {isLoading && (
           <View style={styles.nutritionLoading}>
@@ -573,7 +590,8 @@ function NutritionSection() {
             <Text style={styles.quickActionLabel}>Scan barcode</Text>
           </TouchableOpacity>
         </View>
-      </ScrollView>
+      </Reanimated.ScrollView>
+      </Reanimated.View>
 
       <BarcodeScanModal
         visible={scanOpen}
@@ -647,6 +665,7 @@ export default function TrackerScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
+  flex: { flex: 1 },
   pageTitle: { fontSize: 26, fontWeight: "800", color: colors.textPrimary, letterSpacing: -0.5 },
   pageSub: { fontSize: 12, color: colors.textTertiary, marginTop: 2 },
   addBtn: { width: 36, height: 36, borderRadius: radii.md, backgroundColor: colors.accentMuted, borderWidth: 1, borderColor: colors.accent + "40", alignItems: "center", justifyContent: "center" },

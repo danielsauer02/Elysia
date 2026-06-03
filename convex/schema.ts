@@ -541,4 +541,62 @@ export default defineSchema({
   })
     .index("by_user_day", ["userId", "day"])
     .index("by_user_created", ["userId", "createdAt"]),
+
+  // ─── Phase 6: Sleep Deep-Dive ─────────────────────────────────────────────
+  //
+  // User-attached metadata for each sleep night plus manual sleep sessions
+  // (for nights the wearable missed). Kept separate from `wearableSamples`
+  // so the provenance is unambiguous: `wearableSamples` = provider truth,
+  // `sleepManualSessions` = explicit user input, never silently merged.
+
+  /**
+   * One row per (user, wake-day). `day` follows the same wake-day attribution
+   * rule as sleep_stage samples — see SLEEP_END_DAY_METRICS in wearables.ts.
+   * `tags` ids come from SLEEP_TAG_CATALOG in sleep.ts; renaming an id would
+   * orphan rows, so treat the catalogue as append-only.
+   */
+  sleepNightTags: defineTable({
+    userId: v.string(),
+    day: v.string(),
+    tags: v.array(v.string()),
+    updatedAt: v.string(),
+  }).index("by_user_day", ["userId", "day"]),
+
+  /**
+   * Manually entered sleep sessions (battery dead, band not worn). Surfaced
+   * in the timeline and only counted toward the Sleep Fitness Score when no
+   * wearable sleep data exists for the same wake-day.
+   */
+  sleepManualSessions: defineTable({
+    userId: v.string(),
+    sessionId: v.string(),
+    startTime: v.string(),
+    endTime: v.string(),
+    day: v.string(),
+    kind: v.union(v.literal("primary"), v.literal("nap")),
+    note: v.optional(v.string()),
+    createdAt: v.string(),
+  })
+    .index("by_user_day", ["userId", "day"])
+    .index("by_user_session", ["userId", "sessionId"]),
+
+  // ─── Recommendations: per-user "Not now" blacklist ────────────────────────
+  //
+  // When the user dismisses a recommendation card we suppress it from the
+  // ranked list for 7 days. After `expiresAt` the row is ignored and the
+  // template becomes eligible again. Keyed by (userId, scope, templateId) so
+  // future scopes ("sleep", "stress", ...) can reuse the same table.
+  recommendationDismissals: defineTable({
+    userId: v.string(),
+    /** Recommendation surface, e.g. "recovery". */
+    scope: v.string(),
+    /** ProtocolTemplate.templateId from the mobile catalog. */
+    templateId: v.string(),
+    /** ISO timestamp when the user tapped "Not now". */
+    dismissedAt: v.string(),
+    /** ISO timestamp after which the dismissal is no longer enforced. */
+    expiresAt: v.string(),
+  })
+    .index("by_user_scope", ["userId", "scope"])
+    .index("by_user_scope_template", ["userId", "scope", "templateId"]),
 });

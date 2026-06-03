@@ -1,6 +1,5 @@
 import React, { useCallback, useMemo, useState } from "react";
 import {
-  ScrollView,
   Text,
   View,
   StyleSheet,
@@ -10,6 +9,7 @@ import {
   Modal,
   Pressable,
 } from "react-native";
+import Animated from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useAuth as useClerkAuth } from "@clerk/clerk-expo";
@@ -28,6 +28,8 @@ import { useWearable } from "@/context/WearableContext";
 import { Platform } from "react-native";
 import { mockUserSummary } from "@/mocks/data";
 import { useFloatingTabBarScrollPadding } from "@/hooks/useFloatingTabBarScrollPadding";
+import { useNavScrollHandler } from "@/hooks/useNavScrollHandler";
+import { useOverscrollBounce } from "@/hooks/useOverscrollBounce";
 import { useAppTopBarHeight } from "@/components/navigation/AppTopBar";
 import { markOAuthStateHandled } from "@/lib/oauthGuard";
 import {
@@ -321,6 +323,8 @@ export default function SettingsScreen() {
   const wearable = useWearable();
   const scrollPad = useFloatingTabBarScrollPadding();
   const topBarHeight = useAppTopBarHeight();
+  const { onScroll } = useNavScrollHandler();
+  const bounceStyle = useOverscrollBounce();
   const { habits } = useHabits();
   const sources = useQuery(api.integrations.getSources);
   const exportData = useAction(api.dataPrivacy.exportMyData);
@@ -412,12 +416,17 @@ export default function SettingsScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={["left", "right"]}>
-      <ScrollView
+      <Animated.View style={[styles.flex, bounceStyle] as never}>
+      <Animated.ScrollView
         contentContainerStyle={[
           styles.content,
           { paddingTop: topBarHeight + spacing.md, paddingBottom: scrollPad },
         ]}
         showsVerticalScrollIndicator={false}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+        overScrollMode="never"
+        bounces={false}
       >
         <Text style={styles.pageTitle}>Profile</Text>
 
@@ -745,7 +754,8 @@ export default function SettingsScreen() {
             },
           ]}
         />
-      </ScrollView>
+      </Animated.ScrollView>
+      </Animated.View>
 
       <Modal
         visible={emailModalVisible}
@@ -783,6 +793,7 @@ export default function SettingsScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
+  flex: { flex: 1 },
   content: { padding: spacing.lg, gap: spacing.xl },
   pageTitle: { fontSize: 26, fontWeight: "800", color: colors.textPrimary, letterSpacing: -0.5 },
   profileCard: { gap: spacing.lg },

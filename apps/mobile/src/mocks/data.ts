@@ -609,6 +609,322 @@ export const mockTemplates: ProtocolTemplate[] = [
     linkedCatalogItemIds: [],
     isPublished: true,
   },
+
+  // ─── Recovery-focused expansion (recommendation engine candidates) ────────
+  // Tagged in convex/scoring/recoveryRecommendations.ts (RECOVERY_HABIT_TAGS).
+  // templateIds here MUST match the ids in that file 1:1.
+  {
+    templateId: "11111111-1111-4111-8111-111111111111",
+    slug: "magnesium-evening-protocol",
+    title: "Magnesium Glycinate Before Bed",
+    shortExplanation: "200–400 mg magnesium glycinate 30 minutes before sleep.",
+    expectedBenefit: "Deeper sleep, calmer evenings, and a measurable lift in nightly HRV.",
+    category: "supplementation",
+    evidenceRationale:
+      "Glycinate is the best-absorbed magnesium form for the nervous system; supplementation consistently improves sleep efficiency and parasympathetic HRV markers in mildly deficient adults.",
+    references: [
+      {
+        title: "Effect of magnesium supplementation on sleep quality (Sleep)",
+        sourceType: "meta_analysis",
+        publicationYear: 2021,
+        url: "https://doi.org/10.1186/s12906-021-03457-1",
+      },
+    ],
+    defaultSchedule: {
+      frequencyPerWeek: 7,
+      targetTimesOfDay: ["evening"],
+      startsOn: "2026-03-18",
+    },
+    premiumTierRequired: "free",
+    linkedCatalogItemIds: [],
+    isPublished: true,
+  },
+  {
+    templateId: "22222222-2222-4222-8222-222222222222",
+    slug: "caffeine-cutoff-2pm",
+    title: "Caffeine Cutoff at 2 pm",
+    shortExplanation: "No caffeine after 2 pm, including tea, chocolate, and pre-workout.",
+    expectedBenefit: "Faster sleep onset, more deep sleep, and a higher morning HRV the next day.",
+    category: "sleep",
+    evidenceRationale:
+      "Caffeine has a 5–6 h half-life and even 400 mg taken 6 h before bed reduces total sleep time by ~1 h. Cutoff time is the single most effective lever on sleep latency.",
+    references: [
+      {
+        title: "Caffeine effects on sleep at three different intake times (J Clin Sleep Med)",
+        sourceType: "study",
+        publicationYear: 2013,
+        url: "https://doi.org/10.5664/jcsm.3170",
+      },
+    ],
+    defaultSchedule: {
+      frequencyPerWeek: 7,
+      targetTimesOfDay: ["midday"],
+      startsOn: "2026-03-18",
+    },
+    premiumTierRequired: "free",
+    linkedCatalogItemIds: [],
+    isPublished: true,
+  },
+  {
+    templateId: "33333333-3333-4333-8333-333333333333",
+    slug: "alcohol-free-weeknights",
+    title: "Alcohol-Free Weeknights",
+    shortExplanation: "No alcohol Sunday through Thursday.",
+    expectedBenefit: "Dramatically higher nightly HRV, lower resting heart rate, and recovered REM sleep.",
+    category: "recovery",
+    evidenceRationale:
+      "Even 1–2 drinks lower HRV by 10–25 % overnight and suppress REM. Weekday abstinence preserves the autonomic balance that drives recovery scores.",
+    references: [
+      {
+        title: "Alcohol's impact on cardiac autonomic regulation and recovery (Alcohol Clin Exp Res)",
+        sourceType: "study",
+        publicationYear: 2021,
+        url: "https://doi.org/10.1111/acer.14501",
+      },
+    ],
+    defaultSchedule: {
+      frequencyPerWeek: 5,
+      targetTimesOfDay: ["evening"],
+      startsOn: "2026-03-18",
+    },
+    premiumTierRequired: "free",
+    linkedCatalogItemIds: [],
+    isPublished: true,
+  },
+  {
+    templateId: "44444444-4444-4444-8444-444444444444",
+    slug: "screen-curfew-90min",
+    title: "90-Minute Screen Curfew",
+    shortExplanation: "No phones, laptops, or TVs in the 90 minutes before bed.",
+    expectedBenefit: "Higher melatonin output, faster sleep onset, and reduced rumination at lights-out.",
+    category: "sleep",
+    evidenceRationale:
+      "Evening bright-light exposure suppresses melatonin secretion by up to 50 % for several hours and delays circadian timing. A 90 min buffer removes the bulk of the suppression.",
+    references: [
+      {
+        title: "Evening light suppression of melatonin (J Clin Endocrinol Metab)",
+        sourceType: "study",
+        publicationYear: 2011,
+        url: "https://doi.org/10.1210/jc.2010-2098",
+      },
+    ],
+    defaultSchedule: {
+      frequencyPerWeek: 7,
+      targetTimesOfDay: ["evening"],
+      startsOn: "2026-03-18",
+    },
+    premiumTierRequired: "free",
+    linkedCatalogItemIds: [],
+    isPublished: true,
+  },
+  {
+    templateId: "55555555-5555-4555-8555-555555555555",
+    slug: "resonance-breathing-6bpm",
+    title: "Resonance Breathing (6 BPM)",
+    shortExplanation: "5–10 min of 4-in / 6-out breathing at six breaths per minute.",
+    expectedBenefit: "Trains the baroreflex and is one of the strongest single interventions for raising HRV.",
+    category: "meditation",
+    evidenceRationale:
+      "Breathing at 0.1 Hz maximally synchronises blood pressure, heart rate, and respiration, producing acute HRV gains that persist with daily practice.",
+    references: [
+      {
+        title: "Resonance frequency breathing and HRV biofeedback (Appl Psychophysiol Biofeedback)",
+        sourceType: "review",
+        publicationYear: 2014,
+        url: "https://doi.org/10.1007/s10484-013-9237-2",
+      },
+    ],
+    defaultSchedule: {
+      frequencyPerWeek: 7,
+      targetTimesOfDay: ["morning", "evening"],
+      startsOn: "2026-03-18",
+    },
+    premiumTierRequired: "free",
+    linkedCatalogItemIds: [],
+    isPublished: true,
+  },
+  {
+    templateId: "66666666-6666-4666-8666-666666666666",
+    slug: "yoga-nidra-20min",
+    title: "Yoga Nidra (20 min)",
+    shortExplanation: "20 min guided body-scan in the afternoon or before bed.",
+    expectedBenefit: "Lowers sympathetic tone, eases sleep onset, and recovers daytime alertness without caffeine.",
+    category: "meditation",
+    evidenceRationale:
+      "Yoga Nidra shifts EEG toward alpha/theta and lowers cortisol within 20 min; daily practice improves sleep quality and HRV in stressed adults.",
+    references: [
+      {
+        title: "Yoga Nidra and stress recovery (Int J Yoga)",
+        sourceType: "study",
+        publicationYear: 2018,
+        url: "https://doi.org/10.4103/ijoy.IJOY_57_17",
+      },
+    ],
+    defaultSchedule: {
+      frequencyPerWeek: 4,
+      targetTimesOfDay: ["afternoon", "evening"],
+      startsOn: "2026-03-18",
+    },
+    premiumTierRequired: "free",
+    linkedCatalogItemIds: [],
+    isPublished: true,
+  },
+  {
+    templateId: "77777777-7777-4777-8777-777777777777",
+    slug: "foam-rolling-evening",
+    title: "Evening Foam-Rolling Routine",
+    shortExplanation: "10 min foam-rolling for legs, glutes, and thoracic spine in the evening.",
+    expectedBenefit: "Reduces muscle stiffness, drops sympathetic tone, and improves sleep quality on training days.",
+    category: "mobility",
+    evidenceRationale:
+      "Self-myofascial release acutely reduces parasympathetic withdrawal post-exercise and improves perceived recovery, supporting deeper sleep on hard days.",
+    references: [
+      {
+        title: "Foam rolling and recovery markers (Front Physiol)",
+        sourceType: "meta_analysis",
+        publicationYear: 2019,
+        url: "https://doi.org/10.3389/fphys.2019.00376",
+      },
+    ],
+    defaultSchedule: {
+      frequencyPerWeek: 4,
+      targetTimesOfDay: ["evening"],
+      startsOn: "2026-03-18",
+    },
+    premiumTierRequired: "free",
+    linkedCatalogItemIds: [],
+    isPublished: true,
+  },
+  {
+    templateId: "88888888-8888-4888-8888-888888888888",
+    slug: "bedroom-cooling-18c",
+    title: "Bedroom Cooling to 18 °C",
+    shortExplanation: "Keep your bedroom at 17–19 °C overnight (cooling fan, AC, or open window).",
+    expectedBenefit: "Faster sleep onset and a higher share of deep sleep — both correlate with morning HRV.",
+    category: "sleep",
+    evidenceRationale:
+      "Core body temperature must fall by 1–2 °C to initiate sleep. A cool bedroom accelerates that drop and stabilises deep-sleep architecture.",
+    references: [
+      {
+        title: "Bedroom temperature and sleep architecture (J Physiol Anthropol)",
+        sourceType: "study",
+        publicationYear: 2019,
+        url: "https://doi.org/10.1186/s40101-019-0190-7",
+      },
+    ],
+    defaultSchedule: {
+      frequencyPerWeek: 7,
+      targetTimesOfDay: ["evening"],
+      startsOn: "2026-03-18",
+    },
+    premiumTierRequired: "free",
+    linkedCatalogItemIds: [],
+    isPublished: true,
+  },
+  {
+    templateId: "99999999-9999-4999-8999-999999999999",
+    slug: "post-workout-cooldown",
+    title: "Post-Workout Cooldown",
+    shortExplanation: "5–10 min of easy aerobic + nasal breathing immediately after every workout.",
+    expectedBenefit: "Speeds HR recovery, reduces sympathetic carryover, and protects nightly HRV after training.",
+    category: "recovery",
+    evidenceRationale:
+      "Active cooldown improves heart-rate recovery and parasympathetic reactivation, which is one of the most predictive markers of next-day readiness.",
+    references: [
+      {
+        title: "Heart-rate recovery and autonomic reactivation (Sports Med)",
+        sourceType: "review",
+        publicationYear: 2019,
+        url: "https://doi.org/10.1007/s40279-018-0958-5",
+      },
+    ],
+    defaultSchedule: {
+      frequencyPerWeek: 5,
+      targetTimesOfDay: ["afternoon", "evening"],
+      startsOn: "2026-03-18",
+    },
+    premiumTierRequired: "free",
+    linkedCatalogItemIds: [],
+    isPublished: true,
+  },
+  {
+    templateId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    slug: "hydration-baseline",
+    title: "Daily Hydration Baseline",
+    shortExplanation: "Drink 30–35 ml per kg bodyweight of water across the day, front-loaded before noon.",
+    expectedBenefit: "Lower resting heart rate, more stable HRV, and reduced afternoon fatigue.",
+    category: "recovery",
+    evidenceRationale:
+      "Even mild dehydration (1–2 % bodyweight) raises resting heart rate and impairs autonomic regulation. Consistent baseline hydration keeps both stable.",
+    references: [
+      {
+        title: "Hydration status and cardiovascular performance (Eur J Clin Nutr)",
+        sourceType: "review",
+        publicationYear: 2018,
+        url: "https://doi.org/10.1038/s41430-018-0117-y",
+      },
+    ],
+    defaultSchedule: {
+      frequencyPerWeek: 7,
+      targetTimesOfDay: ["morning", "midday"],
+      startsOn: "2026-03-18",
+    },
+    premiumTierRequired: "free",
+    linkedCatalogItemIds: [],
+    isPublished: true,
+  },
+  {
+    templateId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    slug: "forest-walk-decompression",
+    title: "20-Minute Forest Walk",
+    shortExplanation: "20 min outdoor walk in green space without your phone.",
+    expectedBenefit: "Lower cortisol, restored attention, and a measurable rise in HRV.",
+    category: "stress",
+    evidenceRationale:
+      "Time in green environments (shinrin-yoku) reliably lowers salivary cortisol and blood pressure and raises HRV vs comparable urban walks.",
+    references: [
+      {
+        title: "Forest bathing and autonomic recovery (Environ Health Prev Med)",
+        sourceType: "meta_analysis",
+        publicationYear: 2017,
+        url: "https://doi.org/10.1186/s12199-017-0677-9",
+      },
+    ],
+    defaultSchedule: {
+      frequencyPerWeek: 3,
+      targetTimesOfDay: ["afternoon"],
+      startsOn: "2026-03-18",
+    },
+    premiumTierRequired: "free",
+    linkedCatalogItemIds: [],
+    isPublished: true,
+  },
+  {
+    templateId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    slug: "consistent-bed-wake-time",
+    title: "Consistent Bed & Wake Time",
+    shortExplanation: "Same sleep and wake time within ±30 min, every day — weekends included.",
+    expectedBenefit: "Stronger circadian alignment, higher sleep score, and reduced 'social jet-lag' the next day.",
+    category: "sleep",
+    evidenceRationale:
+      "Sleep regularity predicts all-cause mortality independently of total sleep duration — a stable schedule is the highest-leverage sleep habit you can adopt.",
+    references: [
+      {
+        title: "Sleep regularity and mortality (Sleep)",
+        sourceType: "study",
+        publicationYear: 2023,
+        url: "https://doi.org/10.1093/sleep/zsad253",
+      },
+    ],
+    defaultSchedule: {
+      frequencyPerWeek: 7,
+      targetTimesOfDay: ["evening"],
+      startsOn: "2026-03-18",
+    },
+    premiumTierRequired: "free",
+    linkedCatalogItemIds: [],
+    isPublished: true,
+  },
 ];
 
 export const mockHabits: UserHabit[] = [

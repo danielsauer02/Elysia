@@ -111,7 +111,7 @@ function LongevityPerformanceViewInner({
       {/* Tier badge alone — the trajectory status chip has been retired. */}
       <View style={styles.headerRow}>
         <TierBadge level={1} />
-      </View>
+          </View>
 
       {isCalibrating ? (
         <View style={styles.calibrationBanner}>
@@ -120,7 +120,7 @@ function LongevityPerformanceViewInner({
             Calibrating — day {calibrationDaysCompleted} of {calibrationDaysRequired}. Wheel
             unlocks once we&apos;ve learned your baseline.
           </Text>
-        </View>
+            </View>
       ) : null}
 
       {/* Wheel OR contributions, swapped via center-tap */}

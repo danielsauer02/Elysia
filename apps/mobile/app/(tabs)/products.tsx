@@ -1,6 +1,5 @@
 import React, { useState, useMemo } from "react";
 import {
-  ScrollView,
   Text,
   View,
   StyleSheet,
@@ -8,6 +7,7 @@ import {
   Linking,
   Alert,
 } from "react-native";
+import Animated from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import type { CatalogItem } from "@elysia/domain";
@@ -19,6 +19,8 @@ import { SectionHeader } from "@/components/ui/SectionHeader";
 import { AppScreenHeader } from "@/components/navigation/AppScreenHeader";
 import { useAppTopBarHeight } from "@/components/navigation/AppTopBar";
 import { useHabits } from "@/context/HabitsContext";
+import { useNavScrollHandler } from "@/hooks/useNavScrollHandler";
+import { useOverscrollBounce } from "@/hooks/useOverscrollBounce";
 import { mockCatalogItems, CATALOG_CATEGORIES } from "@/mocks/data";
 
 const OFFER_LABEL: Record<string, string> = {
@@ -115,6 +117,8 @@ export default function ProductsScreen() {
   const [selectedCategory, setSelectedCategory] = useState("All");
   const { addSupplementHabit, isProductTracked } = useHabits();
   const topBarHeight = useAppTopBarHeight();
+  const { onScroll } = useNavScrollHandler();
+  const bounceStyle = useOverscrollBounce();
 
   const filtered = useMemo(() => {
     if (selectedCategory === "All") return mockCatalogItems;
@@ -150,10 +154,15 @@ export default function ProductsScreen() {
         onSelect={setSelectedCategory}
       />
 
-      <ScrollView
+      <Animated.View style={[styles.scroll, bounceStyle] as never}>
+      <Animated.ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+        overScrollMode="never"
+        bounces={false}
       >
         {/* Recommended */}
         {recommended.length > 0 && (
@@ -206,7 +215,8 @@ export default function ProductsScreen() {
             </View>
           </View>
         </Card>
-      </ScrollView>
+      </Animated.ScrollView>
+      </Animated.View>
     </SafeAreaView>
   );
 }

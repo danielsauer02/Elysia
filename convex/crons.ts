@@ -5,7 +5,7 @@ const crons = cronJobs();
 
 crons.interval(
   "pull active wearable providers",
-  { minutes: 15 },
+  { hours: 2 },
   internal.integrationsScheduler.pullAllProviders
 );
 
